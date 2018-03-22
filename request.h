@@ -15,17 +15,16 @@ struct Request
     int fd;
     bool keep_alive;
 
-    char version; // '0'=http1.0, '1'=http/1.1
     short method;
     short http_code;
-    time_t expired;
 
-    size_t process_len;
     size_t length;
-    size_t content_length;
+    size_t process_len;
+    size_t content_len;
 
     Key key;
     Key dir;
+    time_t addtime;
 
     HttpPhase phase;
     Address client_addr;

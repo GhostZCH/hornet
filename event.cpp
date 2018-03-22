@@ -3,29 +3,6 @@
 using namespace std;
 
 
-EventData::EventData(const EpollData& data)
-{
-    uint32_t* u = (uint32_t*)&data.u64;
-    fd = u[0];
-    type = (FdType)u[1];
-}
-
-
-EventData::EventData(int fd, FdType type)
-{
-    fd = fd;
-    type = type;
-}
-
-
-EpollData EventData::ToEpollData()
-{
-    EpollData data;
-    data.u64 = fd << 32 + type;
-    return data;
-}
-
-
 EventEngine::EventEngine()
 {
     epoll_ = -1;
@@ -46,10 +23,10 @@ bool EventEngine::Init(){
 }
 
 
-bool EventEngine::AddEvent(int fd, FdType type, int flag)
+bool EventEngine::AddEvent(int fd, int type, int flag)
 {
     Event ev;
-    ev.data.u64 = fd;
+    ev.data.u64 = type << 32 + fd;
     ev.events = flag;
     return epoll_ctl(epoll_, EPOLL_CTL_ADD, fd, &ev) >= 0;
 }

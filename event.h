@@ -4,30 +4,33 @@
 
 using namespace std;
 
- 
-// same size of epoll_event.data
-struct EventData{
-    int fd;
-    FdType type;
+enum EventType{
+    EV_TYPE_LISTEN,
+    EV_TYPE_CLIENT,
+    EV_TYPE_INNER
+};
 
-    EventData(const EpollData& event);
-    EventData(int fd, FdType type);
-    EpollData ToEpollData();
+
+struct Event{
+    int fd;
+    int type;
 };
 
 
 class EventEngine
 {
 public:
-    EventEngine();
+    EventEngine(int max_events, int timeout);
     ~EventEngine();
 
     bool Init();
     void Forever();
-    bool AddEvent(int fd, FdType type, int flag);
-    bool DeleteEvent(int fd, FdType type);
-    int Wait(Event* events, int max_events, int timeout);
-    
+    bool AddEvent(Event, int flag);
+    bool DeleteEvent(int fd);
+    int Wait(Event* events, , );
+
 private:
     int epoll_;
+    int max_events_;
+    int timeout_;
 };
