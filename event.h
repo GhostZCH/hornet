@@ -27,7 +27,7 @@ public:
     void Forever();
     bool AddEvent(Event, int flag);
     bool DeleteEvent(int fd);
-    int Wait(Event* events, , );
+    EpEvent* Wait(int& count);
 
 private:
     int epoll_;

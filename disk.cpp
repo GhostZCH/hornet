@@ -1,14 +1,5 @@
 #include "disk.h"
 
-#include <sstream>
-#include <memory>
-#include <algorithm>
-
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-
 
 Disk::Disk(const string& path, const uint32_t block_count, const uint32_t now)
 {
@@ -161,6 +152,60 @@ Item* Disk::Add(const Key& dir, const Key& id, Item& item)
     current_pos_ += item.size;
     meta_[dir][id] = item;
     return &meta_[dir][id];
+}
+
+
+Item* Disk::Get(const Key& dir, const Key& id)
+{
+    if (meta_.find(dir) == meta_.end()) {
+        return nullptr;
+    }
+
+    if (meta_[dir].find(id) == meta_[dir].end()) {
+        return nullptr;
+    }
+
+    Item* item = &meta_[dir][id];
+    if (!verify_item(*item, now_)) {
+        return nullptr;
+    }
+
+    return item;
+}
+
+
+uint32_t Disk::Delete(const Key &dir, const Key &id, const uint16_t tags[])
+{
+    if (meta_.find(dir) == meta_.end()) {
+        return 0;
+    }
+
+    if (id == NULL_KEY) {
+        uint32_t deleted = 0;
+
+        for (auto id_item: meta_[dir]) {
+            id_item.second.deleted = 1;
+
+            for (int i=0; i < TAG_LIMIT; i++) {
+                if (tags[i] != uint16_t(-1)
+                   && tags[i] != id_item.second.tags[i]) {
+                    id_item.second.deleted = 0;
+                    break;
+                }
+            }
+
+            deleted += id_item.second.deleted;
+        }
+
+        return deleted;
+    }
+
+    if (meta_[dir].find(id) == meta_[dir].end()) {
+        return false;
+    }
+
+    meta_[dir][id].deleted = 1;
+    return 1;
 }
 
 

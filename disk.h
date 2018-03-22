@@ -29,11 +29,11 @@ public:
     ~Disk();
 
     bool Init();
-    bool Delete(const Key &dir, const Key &id, const uint16_t tags[]);
+    void UpdateTime(uint32_t now);
+
     Item* Add(const Key& dir, const Key& id, Item& item);
     Item* Get(const Key& dir, const Key& id);
-    void UpdateTime(uint32_t now);
-    
+    uint32_t Delete(const Key &dir, const Key &id, const uint16_t tags[]);
 
 private:
     bool nextBlock();

@@ -38,7 +38,7 @@ enum FdType{
 
 
 typedef union epoll_data EpollData;
-typedef struct epoll_event Event;
+typedef struct epoll_event EpEvent;
 typedef struct sockaddr_in Address;
 
 // only allow GET PUT or DEL so the length of request line is fixed

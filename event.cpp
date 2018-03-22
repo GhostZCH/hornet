@@ -3,7 +3,7 @@
 using namespace std;
 
 
-EventEngine::EventEngine()
+EventEngine::EventEngine(int max_events, int timeout)
 {
     epoll_ = -1;
 };
@@ -38,7 +38,7 @@ bool EventEngine::DeleteEvent(int fd)
 }
 
 
-int EventEngine::Wait(Event* events, int max_events, int timeout)
+int EventEngine::Wait(EpEvent* events, int max_events)
 {
-    return epoll_wait(epoll_, events, max_events, timeout);
+    return epoll_wait(epoll_, events, max_events, timeout_);
 }
