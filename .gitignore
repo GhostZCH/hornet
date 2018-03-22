@@ -1,4 +1,5 @@
 data
 *.o
 hornet
+.vscode/*
 
