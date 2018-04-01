@@ -3,6 +3,12 @@
 #include "hornet.h"
 
 
+// only allow GET PUT or DEL so the length of request line is fixed
+const short METHOD_GET = 'G'; 
+const short METHOD_PUT = 'P';
+const short METHOD_DEL = 'D';
+
+
 enum class HttpPhase
 {
     RECV,

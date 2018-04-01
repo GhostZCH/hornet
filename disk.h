@@ -52,3 +52,4 @@ private:
     DirMap meta_;
     BlockMap blocks_;
 };
+// TODO block status use and deleted

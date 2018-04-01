@@ -21,6 +21,7 @@ Disk::~Disk()
         }
     }
 
+    // write to tmp first
     int meta_fd = open((path_ + "meta.tmp").c_str(), O_RDWR);
     if (meta_fd < 0) {
         return;
@@ -76,6 +77,7 @@ Disk::~Disk()
         return;
     }
 
+    // if every thing ok, mv meta.tmp to tmp
     rename((path_ + "meta.tmp").c_str(), (path_ + "meta").c_str());
 }
 
