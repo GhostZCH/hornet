@@ -41,7 +41,7 @@ bool EventEngine::AddHandler(Handler *h)
         return false;
     }
 
-    handlers_[h->fd] = unique_ptr<Handler>(h);
+    handlers_[h->fd] = h;
     return true;
 }
 
@@ -52,6 +52,7 @@ bool EventEngine::DelHandler(int fd)
         return false;
     }
 
+    // need to release handler manually
     handlers_.erase(fd);
     return true;
 }
@@ -59,7 +60,7 @@ bool EventEngine::DelHandler(int fd)
 
 bool EventEngine::AddEpollEvent(int fd, int flag)
 {
-    EpollEvent event; 
+    struct epoll_event event; 
     event.data.fd = fd;
     event.events = flag;
     return epoll_ctl(epoll_, EPOLL_CTL_ADD, fd, &event) == 0;
@@ -93,50 +94,44 @@ void EventEngine::HandleEpollEvent()
     int n = epoll_wait(epoll_, events, EPOLL_WAIT_EVENTS, 200);
 
     for (int i = 0; i < n; i++) {
-        auto handler = handlers_.find(events[i].data.fd);
+        auto iter = handlers_.find(events[i].data.fd);
 
-        if (handler !== handlers_.end()) {
+        if (iter != handlers_.end()) {
             continue;
         }
 
-        Event event;
+        Event event = {0};
         event.read = (events[i].events & EPOLLIN) != 0;
         event.write = (events[i].events & EPOLLOUT) != 0;
         event.error = (events[i].events & (EPOLLHUP|EPOLLERR)) != 0;
-        event.timer = false;
-        event.arg = 0
 
-        handler->second.get()->Handle(event, *this);
+        iter->second->Handle(event, *this);
     }
 }
 
 
 void EventEngine::HandleTimerEvent()
 {
-    auto iter = timers_.begin();
+    for (auto iter = timers_.begin(); iter != timers_.end(); ) {
 
-    for (; iter != timer_.end(); iter++) {
-        if (iter.first > now_) {
+        if (iter->first > now_) {
             break;
         }
 
         for (auto timer: iter->second) {
             int fd = timer >> 32 & 0xFFFFFFFF;
 
-            auto handler = handlers_.find(fd);
-            if (handler !== handlers_.end()) {
+            auto iter = handlers_.find(fd);
+            if (iter != handlers_.end()) {
                 continue;
-            } 
+            }
 
-            Event event;
-
-            ev.read = false;
-            ev.write = false;
-            ev.error = false;
-            ev.timer = true;
-            ev.arg = timer & 0xFFFFFFFF;
-
-            handler->second.get()->Handle(event, *this);
+            Event event = {0};
+            event.timer = true;
+            event.data.i = timer & 0xFFFFFFFF;
+            iter->second->Handle(event, *this);
         }
+
+        iter = timers_.erase(iter);
     }
 }

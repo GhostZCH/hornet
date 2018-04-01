@@ -45,8 +45,8 @@ public:
     bool AddEpollEvent(int fd, int flag=EPOLLIN|EPOLLOUT|EPOLLET|EPOLLHUP|EPOLLERR);
     bool DelEpollEvent(int fd);
 
-    bool AddTimer(int fd, uint32_t timeout);
-    bool DelTimer(int fd, uint32_t timeout);
+    bool AddTimer(int fd, uint32_t timeout, int id=0);
+    bool DelTimer(int fd, uint32_t timeout, int id=0);
     uint32_t Now();
 
 private:
@@ -65,5 +65,5 @@ private:
     map<uint32_t, unordered_set<int64_t>> timers_;
 
     // handler {fd: handler}
-    unordered_map<int, unique_ptr<Handler>> handlers_;
+    unordered_map<int, Handler*> handlers_;
 };

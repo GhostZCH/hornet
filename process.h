@@ -2,30 +2,41 @@
 
 #include "hornet.h"
 
+
 class Process
 {
 public:
-    Process();
-    virtual ~Process();
+    Process(EventEngine *engine):engine_(engine){};
+    virtual ~Process() {delete engine_;};
 
-    void Forever();
+    void Forever() {engine_->Forever();};
 
 private:
     EventEngine *engine_;
 };
 
 
-class Master: public Process
+class Worker: public Process
 {
 public:
-    Master();
-    ~Master();
+    Worker(Disk *disk, EventEngine *engine); // TODO: and socket pair
+    ~Worker();
+
+    bool SendHandler(Handler *handler);
+    Handler* RecvHandler();
 
 private:
+    int socks[2]; // socket pair
 };
 
 
-class Worker: public Process
+class Master: public Process
 {
+public:
+    Master(Disk *disk, EventEngine *engine); // TODO: and accept handler, and socket pair
+    ~Master(){delete disk_; for (auto w: workers_){delete w;}};
 
+private:
+    Disk *disk_;
+    vector<Worker*> workers_;
 };
