@@ -20,11 +20,13 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+
 
 using namespace std;
 
@@ -41,4 +43,5 @@ const size_t ITEM_LIMIT = BLOCK_SIZE;
 #include "disk.h"
 #include "request.h"
 #include "event.h"
+#include "handlers.h"
 #include "process.h"

@@ -24,7 +24,7 @@ class Handler
 {
 public:
     Handler() {};
-    virtual ~Handler(){};
+    virtual ~Handler();
     virtual void Handle(const Event& ev, const EventEngine& engine){};
 
     int fd;
@@ -35,10 +35,11 @@ class EventEngine
 {
 public:
     EventEngine(int connection_limit=10240);
-    ~EventEngine(){};
 
     void Forever();
+    virtual void Stop();
 
+protected:
     bool AddHandler(Handler *h);
     bool DelHandler(int fd);
 
@@ -49,7 +50,6 @@ public:
     bool DelTimer(int fd, uint32_t timeout, int id=0);
     uint32_t Now();
 
-private:
     void HandleEpollEvent();
     void HandleTimerEvent();
 
@@ -65,5 +65,5 @@ private:
     map<uint32_t, unordered_set<int64_t>> timers_;
 
     // handler {fd: handler}
-    unordered_map<int, Handler*> handlers_;
+    unordered_map<int, unique_ptr<Handler>> handlers_;
 };

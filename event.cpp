@@ -20,16 +20,28 @@ void EventEngine::Forever()
 {
     while (run_) {
         now_ = (uint32_t)time(nullptr);
-
         HandleEpollEvent();
         HandleTimerEvent();
     }
 }
 
 
-bool EventEngine::AddHandler(Handler *h)
+void EventEngine::Stop() {
+    run_ = false;
+}
+
+
+unique_ptr<Handler>* EventEngine::GetHandler(int fd) {
+    if (handlers_.find(fd) != handlers_.end()) {
+        return &handlers_[fd];
+    }
+    return nullptr;
+}
+
+
+bool EventEngine::AddHandler(Handler *handler)
 {
-    if (nullptr == h || h->fd <= 0) {
+    if (nullptr == handler || handler->fd <= 0) {
         return false;
     }
 
@@ -37,11 +49,11 @@ bool EventEngine::AddHandler(Handler *h)
         return false;
     }
 
-    if (handlers_.find(h->fd) != handlers_.end()) {
+    if (handlers_.find(handler->fd) != handlers_.end()) {
         return false;
     }
 
-    handlers_[h->fd] = h;
+    handlers_[handler->fd] = unique_ptr<Handler>(handler);
     return true;
 }
 

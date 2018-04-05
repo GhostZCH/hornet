@@ -77,7 +77,7 @@ Disk::~Disk()
         return;
     }
 
-    // if every thing ok, mv meta.tmp to tmp
+    // if everything ok, mv meta.tmp to tmp
     rename((path_ + "meta.tmp").c_str(), (path_ + "meta").c_str());
 }
 
