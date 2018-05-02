@@ -1,12 +1,17 @@
 #pragma once
 
 #include "hornet.h"
-
+#include "event.h"
+#include "disk.h"
+#include "accept_handler.h"
+#include "client_handler.h"
 
 class Worker: public EventEngine
 {
 public:
     Worker(int id);
+
+    bool Init();
     int GetSendMsgFd();
 
 private:
@@ -18,7 +23,9 @@ private:
 class Master: public EventEngine
 {
 public:
-    Master(); // TODO: and accept handler, and socket pair
+    Master();
+
+    bool Init();
     void Stop();
 
     void AddWorker(Worker* worker);

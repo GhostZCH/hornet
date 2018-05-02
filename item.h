@@ -13,7 +13,7 @@ struct Key
 
 
 const int KEY_CHAR_SIZE = sizeof(Key) * 2;
-const Key NULL_KEY = {{-1,-1}};
+const Key NULL_KEY = {{(uint64_t)-1, (uint64_t)-1}};
 
 
 struct KeyHash

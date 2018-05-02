@@ -1,6 +1,11 @@
-#pragma once
-
 #include "event.h"
+
+Handler::~Handler()
+{
+    if (fd > 0) {
+        close(fd);
+    }
+}
 
 
 EventEngine::EventEngine(int connection_limit)
@@ -16,13 +21,16 @@ EventEngine::EventEngine(int connection_limit)
 }
 
 
-void EventEngine::Forever()
+bool EventEngine::Forever()
 {
     while (run_) {
         now_ = (uint32_t)time(nullptr);
-        HandleEpollEvent();
-        HandleTimerEvent();
+        if (!HandleEpollEvent() || !HandleTimerEvent()) {
+            return false;
+        }
     }
+
+    return true;
 }
 
 
@@ -31,21 +39,9 @@ void EventEngine::Stop() {
 }
 
 
-unique_ptr<Handler>* EventEngine::GetHandler(int fd) {
-    if (handlers_.find(fd) != handlers_.end()) {
-        return &handlers_[fd];
-    }
-    return nullptr;
-}
-
-
 bool EventEngine::AddHandler(Handler *handler)
 {
-    if (nullptr == handler || handler->fd <= 0) {
-        return false;
-    }
-
-    if (handlers_.size() >= con_limit_) {
+    if (handlers_.size() >= (size_t)con_limit_) {
         return false;
     }
 
@@ -64,8 +60,8 @@ bool EventEngine::DelHandler(int fd)
         return false;
     }
 
-    // need to release handler manually
     handlers_.erase(fd);
+
     return true;
 }
 
@@ -87,42 +83,51 @@ bool EventEngine::DelEpollEvent(int fd)
 
 bool EventEngine::AddTimer(int fd, uint32_t timeout, int id)
 {
-    timers_[timeout + now_].insert(fd << 32 + id);
+    int64_t sub_id = fd;
+
+    timers_[timeout + now_].insert(sub_id << 32 | id);
     return true;
 }
 
 
 bool EventEngine::DelTimer(int fd, uint32_t timeout, int id)
 {
-    timers_[timeout + now_].erase(fd << 32 + id);
+    int64_t sub_id = fd;
+    timers_[timeout + now_].erase(sub_id << 32 | id);
     return true;
 }
 
 
-void EventEngine::HandleEpollEvent()
+bool EventEngine::HandleEpollEvent()
 {
-    struct epoll_event events[EPOLL_WAIT_EVENTS];
+    struct epoll_event epoll_events[EPOLL_WAIT_EVENTS];
 
-    int n = epoll_wait(epoll_, events, EPOLL_WAIT_EVENTS, 200);
+    int n = epoll_wait(epoll_, epoll_events, EPOLL_WAIT_EVENTS, 200);
 
     for (int i = 0; i < n; i++) {
-        auto iter = handlers_.find(events[i].data.fd);
+        auto iter = handlers_.find(epoll_events[i].data.fd);
 
-        if (iter != handlers_.end()) {
-            continue;
+        if (iter == handlers_.end()) {
+            return false;
         }
 
         Event event = {0};
-        event.read = (events[i].events & EPOLLIN) != 0;
-        event.write = (events[i].events & EPOLLOUT) != 0;
-        event.error = (events[i].events & (EPOLLHUP|EPOLLERR)) != 0;
+        event.read = (epoll_events[i].events & EPOLLIN) != 0;
+        event.write = (epoll_events[i].events & EPOLLOUT) != 0;
+        event.error = (epoll_events[i].events & (EPOLLHUP|EPOLLERR)) != 0;
 
-        iter->second->Handle(event, *this);
+        if (!iter->second->Handle(&event, this)) {
+            if (!iter->second->Close(this)) {
+                return false;
+            }
+        }
     }
+
+    return true;
 }
 
 
-void EventEngine::HandleTimerEvent()
+bool EventEngine::HandleTimerEvent()
 {
     for (auto iter = timers_.begin(); iter != timers_.end(); ) {
 
@@ -141,9 +146,11 @@ void EventEngine::HandleTimerEvent()
             Event event = {0};
             event.timer = true;
             event.data.i = timer & 0xFFFFFFFF;
-            iter->second->Handle(event, *this);
+            iter->second->Handle(&event, this);
         }
 
         iter = timers_.erase(iter);
     }
+
+    return true;
 }

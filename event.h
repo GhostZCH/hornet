@@ -3,31 +3,35 @@
 #include "hornet.h"
 
 
-class EventEngine;
-
-
 struct Event
 {
     bool read;
     bool write;
     bool error;
     bool timer;
+
     union {
-        int i;
-        float f;
+        int64_t i;
+        double d;
         void* p;
     } data;
 };
 
 
+class EventEngine;
+
+
 class Handler
 {
 public:
-    Handler() {};
     virtual ~Handler();
-    virtual void Handle(const Event& ev, const EventEngine& engine){};
 
-    int fd;
+    virtual bool Init(EventEngine* engine) = 0;
+    virtual bool Close(EventEngine* engine) = 0;
+
+    virtual bool Handle(Event* ev, EventEngine* engine) = 0;
+
+    int fd{-1};
 };
 
 
@@ -36,10 +40,9 @@ class EventEngine
 public:
     EventEngine(int connection_limit=10240);
 
-    void Forever();
+    bool Forever();
     virtual void Stop();
 
-protected:
     bool AddHandler(Handler *h);
     bool DelHandler(int fd);
 
@@ -48,10 +51,12 @@ protected:
 
     bool AddTimer(int fd, uint32_t timeout, int id=0);
     bool DelTimer(int fd, uint32_t timeout, int id=0);
+
     uint32_t Now();
 
-    void HandleEpollEvent();
-    void HandleTimerEvent();
+protected:
+    bool HandleEpollEvent();
+    bool HandleTimerEvent();
 
     bool run_;
 

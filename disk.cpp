@@ -7,7 +7,7 @@ Disk::Disk(const string& path, const uint32_t block_count, const uint32_t now)
     path_ = path;
 
     block_count_ = block_count;
-    
+
     current_pos_ = 0;
     current_block_ = 0;
 }
@@ -96,7 +96,7 @@ bool Disk::Init()
     }
 
     MetaHeader header;
-    if (read(meta_fd, &header, sizeof(header)) < sizeof(header)) {
+    if (read(meta_fd, &header, sizeof(header)) < (ssize_t)sizeof(header)) {
         return false;
     }
 
@@ -113,10 +113,11 @@ bool Disk::Init()
     }
     current_pos_ = block_size_; // use new block when add
 
-    Item item;
-    DiskItem ditem;
     for (uint32_t i = 0; i < header.item_count; i++) {
-        if (read(meta_fd, &ditem, sizeof(ditem)) < sizeof(ditem)) {
+        Item item;
+        DiskItem ditem;
+
+        if (read(meta_fd, &ditem, sizeof(ditem)) < (ssize_t)sizeof(ditem)) {
             return false;
         }
 

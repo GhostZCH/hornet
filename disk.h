@@ -2,6 +2,8 @@
 
 #include "hornet.h"
 
+#include "item.h"
+
 struct Block
 {
     int fd;
