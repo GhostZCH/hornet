@@ -4,10 +4,12 @@
 /*
  * worker
  */
-Worker::Worker(int id):EventEngine()
+Worker::Worker(int id, Disk *disk, map<string, string> &conf): EventEngine()
 {
     id_ = id;
     msg_fd_[0] = msg_fd_[1] = -1;
+    disk_ = disk;
+    conf_ = conf;
 }
 
 
@@ -30,21 +32,44 @@ int Worker::GetSendMsgFd()
  * master
  */
 
-Master::Master():EventEngine()
+Master::Master(map<string, string> &conf):EventEngine()
 {
+    conf_ = conf;
 }
 
 
 bool Master::Init()
 {
+    disk_ = unique_ptr<Disk>(new Disk(
+        conf_["disk.path"],
+        (uint32_t)stoll(conf_["disk.block.count"]),
+        0
+    ));
+
+    if (!disk_->Init()) {
+        return false;
+    }
+
+    for (int id = 0; id < stoi(conf_["worker.count"]); id++) {
+        auto w = new Worker(id, disk_.get(), conf_);
+        if (!w->Init()) {
+            return false;
+        }
+        workers_.push_back(unique_ptr<Worker>(w));
+    }
+
     // DiskHandler *disk = new DiskHandler();
     // disk->fd = DISK_FD;
     // AddHandler(disk);
     // AddTimer(disk->fd, 10);
 
-    AcceptHandler *accept = new AcceptHandler("0.0.0.0", 8080);
+    AcceptHandler *accept = new AcceptHandler(
+        conf_["master.ip"],
+        stoi(conf_["master.port"]),
+        disk_.get()
+    );
 
-    if (accept == nullptr || ! accept->Init(this)) {
+    if (!accept->Init(this)) {
         return false;
     }
 
@@ -59,16 +84,4 @@ void Master::Stop()
     }
 
     EventEngine::Stop();
-}
-
-
-void Master::AddWorker(Worker* worker)
-{
-    // workers_.push_back(unique_ptr<Worker>(worker));
-
-    // MsgHandler *h = new MsgHandler();
-    // h->fd = worker->GetSendMsgFd();
-
-    // AddHandler(h);
-    // AddEpollEvent(h->fd, EPOLLIN);
 }

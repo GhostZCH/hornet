@@ -2,10 +2,11 @@
 #include "client_handler.h"
 
 
-AcceptHandler::AcceptHandler(const string& ip, short port)
+AcceptHandler::AcceptHandler(const string& ip, short port, Disk* disk)
 {
     ip_ = ip;
     port_ = port;
+    disk_ = disk;
 }
 
 
@@ -65,7 +66,7 @@ bool AcceptHandler::Handle(Event* ev, EventEngine* engine)
             break;
         }
 
-        ClientHandler *client = new ClientHandler();
+        ClientHandler *client = new ClientHandler(disk_);
         client->fd = client_sock;
 
         if (!client->Init(engine)) {

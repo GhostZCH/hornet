@@ -9,7 +9,7 @@
 class Worker: public EventEngine
 {
 public:
-    Worker(int id);
+    Worker(int id, Disk *disk, map<string, string> &conf);
 
     bool Init();
     int GetSendMsgFd();
@@ -17,20 +17,21 @@ public:
 private:
     int msg_fd_[2]; // socket pair
     int id_;
+    Disk *disk_;
+    map<string, string> conf_;
 };
 
 
 class Master: public EventEngine
 {
 public:
-    Master();
+    Master(map<string, string> &conf);
 
     bool Init();
     void Stop();
 
-    void AddWorker(Worker* worker);
-
 private:
+    map<string, string> conf_;
     unique_ptr<Disk> disk_;
     vector<unique_ptr<Worker>> workers_;
 };

@@ -84,13 +84,17 @@ Disk::~Disk()
 
 bool Disk::Init()
 {
-    string mate_file = path_ + "meta";
+    string meta_file = path_ + "meta";
 
-    if (unlink(mate_file.c_str()) < 0) {
+    if (access(meta_file.c_str(), F_OK) == -1) {
+        return true;
+    }
+
+    if (unlink(meta_file.c_str()) < 0) {
         return false;
     }
 
-    int meta_fd = open(mate_file.c_str(), O_RDWR);
+    int meta_fd = open(meta_file.c_str(), O_RDWR);
     if (meta_fd < 0) {
         return false;
     }

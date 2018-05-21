@@ -1,4 +1,4 @@
-CXXFLAGS  = -std=c++11 -g -O3 -Wall 
+CXXFLAGS  = -std=c++11 -g -O0 -Wall 
 LDLIBS  = -lpthread
 
 
