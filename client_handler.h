@@ -9,7 +9,7 @@
 class ClientHandler:public Handler
 {
 public:
-    ClientHandler(Disk* disk);
+    ClientHandler(Disk* disk, size_t buf_cap);
 
     bool Init(EventEngine* engine);
     bool Close(EventEngine* engine);
@@ -17,21 +17,23 @@ public:
     bool Handle(Event* ev, EventEngine* engine);
 
 private:
-    bool Read();
-    bool Write();
+    bool handleRead();
+    bool handleWrite();
 
-    bool ProcessInput();
-    bool GetSpecialHeader();
+    bool processReqLine(char *header_end);
+    bool setRspHeader();
 
     bool reading_{true};
 
     int method_{0};
+    map<string, ssize_t> args_;
     uint16_t state_;
 
+    bool send_disk_{false};
     unique_ptr<char []> buf_;
     size_t process_len_{0};
     size_t buf_size_{0};
-    size_t buf_capacity_{HEADER_SIZE};
+    size_t buf_capacity_{0};
 
     size_t content_len{0};
 

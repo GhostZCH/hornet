@@ -6,6 +6,11 @@
 struct Key
 {
 	uint64_t data[2];
+
+	Key(){data[0] = data[1] = 0;}
+	Key(const Key &other){data[1]=other.data[1];data[0]=other.data[0];};
+	Key(const char *in){Load(in);}
+
 	bool operator == (const Key & other) const;
 	void Load(const char *in);
 	char* Dump(char *out);
@@ -13,7 +18,7 @@ struct Key
 
 
 const int KEY_CHAR_SIZE = sizeof(Key) * 2;
-const Key NULL_KEY = {{(uint64_t)-1, (uint64_t)-1}};
+const Key NULL_ITEM_KEY("ffffffffffffffffffffffffffffffff");
 
 
 struct KeyHash

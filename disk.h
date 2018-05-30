@@ -27,7 +27,7 @@ typedef map<uint32_t, Block> BlockMap;
 class Disk
 {
 public:
-    Disk(const string& path, const uint32_t block_count, const uint32_t now);
+    Disk(const string& path, const uint32_t block_count, const size_t block_size);
     ~Disk();
 
     bool Init();
@@ -36,6 +36,10 @@ public:
     Item* Add(const Key& dir, const Key& id, Item& item);
     Item* Get(const Key& dir, const Key& id);
     uint32_t Delete(const Key &dir, const Key &id, const uint16_t tags[]);
+
+    ssize_t Wirte(Item *item, char* buf);
+    ssize_t Read(Item *item, char* buf);
+    ssize_t Send(Item *item, int sock, off_t off);
 
 private:
     bool nextBlock();

@@ -1,5 +1,5 @@
 #include "hornet.h"
-#include "process.h"
+#include "master.h"
 #include "disk.h"
 
 
@@ -10,9 +10,11 @@ void init_test_conf(map<string, string> &conf)
 
     conf["worker.count"] = "4";
 
+    conf["request.max_header_size"] = "4096";
+
     conf["disk.block.count"] = "4";
     conf["disk.block.size"] = to_string(1024*32); // 32M
-    conf["disk.path"] = "/tmp/";
+    conf["disk.path"] = "data/";
 }
 
 

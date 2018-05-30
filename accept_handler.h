@@ -7,7 +7,7 @@
 class AcceptHandler:public Handler
 {
 public:
-    AcceptHandler(const string& ip, short port, Disk* disk);
+    AcceptHandler(const string& ip, short port, Disk* disk, size_t buf_cap);
 
     bool Init(EventEngine* engine);
     bool Close(EventEngine* engine);
@@ -17,5 +17,8 @@ public:
 private:
     string ip_;
     short port_;
+
+    // for client
     Disk* disk_;
+    size_t buf_cap_{0};
 };

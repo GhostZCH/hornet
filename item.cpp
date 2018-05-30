@@ -87,5 +87,5 @@ void to_disk_item(DiskItem &ditem, const Key& dir, const Key& id, const Item& it
 
 bool verify_item(const Item& item, uint32_t now)
 {
-	return (item.putting != 1 && item.deleted != 1 && item.expired < now);
+	return (item.putting != 1 && item.deleted != 1 && item.expired > now);
 }

@@ -1,12 +1,13 @@
 #include "disk.h"
+#include <sys/sendfile.h>
 
 
-Disk::Disk(const string& path, const uint32_t block_count, const uint32_t now)
+Disk::Disk(const string& path, const uint32_t block_count, const size_t block_size)
 {
-    now_ = now;
     path_ = path;
 
     block_count_ = block_count;
+    block_size_ = block_size;
 
     current_pos_ = 0;
     current_block_ = 0;
@@ -87,7 +88,7 @@ bool Disk::Init()
     string meta_file = path_ + "meta";
 
     if (access(meta_file.c_str(), F_OK) == -1) {
-        return true;
+        return nextBlock();
     }
 
     if (unlink(meta_file.c_str()) < 0) {
@@ -153,8 +154,6 @@ Item* Disk::Add(const Key& dir, const Key& id, Item& item)
 
     item.block = current_block_;
     item.pos = current_pos_;
-    item.putting = 1;
-    item.use = 0;
 
     current_pos_ += item.size;
     meta_[dir][id] = item;
@@ -187,7 +186,7 @@ uint32_t Disk::Delete(const Key &dir, const Key &id, const uint16_t tags[])
         return 0;
     }
 
-    if (id == NULL_KEY) {
+    if (id == NULL_ITEM_KEY) {
         uint32_t deleted = 0;
 
         for (auto id_item: meta_[dir]) {
@@ -237,11 +236,30 @@ bool Disk::nextBlock()
     current_pos_ = 0;
 
     Block block = {-1, 0, 0};
-    block.fd = open((path_ + to_string(current_block_)).c_str(), O_RDWR);
+    block.fd = open((path_ + to_string(current_block_)).c_str(), O_RDWR|O_CREAT, S_IRUSR|S_IWUSR);
     if (block.fd < 0) {
         return false;
     }
 
     blocks_[current_block_] = block;
     return true;
+}
+
+
+ssize_t Disk::Wirte(Item *item, char* buf)
+{
+    return pwrite(blocks_[item->block].fd, buf, item->size, item->pos);
+}
+
+
+ssize_t Disk::Read(Item *item, char* buf)
+{
+    return pread(blocks_[item->block].fd, buf, item->size, item->pos);
+}
+
+
+ssize_t Disk::Send(Item *item, int sock, off_t off)
+{
+    off_t start = off + item->pos;
+    return sendfile(sock, blocks_[item->block].fd, &start, item->size - off);
 }
