@@ -1,40 +1,59 @@
 #include "hornet.h"
+#include "tool.h"
 #include "master.h"
-#include "disk.h"
+#include "accept_handler.h"
 
 
-void init_test_conf(map<string, string> &conf)
+unique_ptr<Master> master;
+
+
+void signal_handler(int sig)
 {
-    conf["master.port"] = "1691";
-    conf["master.ip"] = "0.0.0.0";
+    static bool s_handle_signal = false;
+    logger(LOG_ERROR, "signal_handler: " << sig);
 
-    conf["worker.count"] = "4";
-
-    conf["request.max_header_size"] = "4096";
-
-    conf["disk.block.count"] = "4";
-    conf["disk.block.size"] = to_string(1024*32); // 32M
-    conf["disk.path"] = "data/";
+    if (!s_handle_signal) {
+        s_handle_signal = true;
+        master->Stop();
+    }
 }
 
 
 int main(int argc, char* argv[])
 {
-    unique_ptr<Master> master;
-
     try {
-        map<string, string> conf;
-        init_test_conf(conf);
+        update_time();
+        set_logger("ERROR", &cerr);
 
-        master = unique_ptr<Master>(new Master(conf));
-
-        if (!master->Init()) {
+        map<string, pair<string, string>> params;
+        params["c"] = make_pair<string, string>("config file of hornet", "hornet.conf");
+        if (!get_param(argc, argv, params)) {
             return 1;
         }
 
-        return master->Forever() ? 0 : 1;
-    } catch (const std::exception & exc) {
-        cout << exc.what() << endl;
+        if (!load_conf(params["c"].second)) {
+            logger(LOG_ERROR, "load_conf failed");
+            return 1;
+        }
+
+        ofstream errlog = ofstream(g_config["log.error"], ios_base::app);
+        if (!errlog.is_open() || !set_logger(g_config["log.level"], &errlog)) {
+            logger(LOG_ERROR, "open errlog failed");
+            return 1;
+        }
+
+        master = unique_ptr<Master>(new Master());
+
+        if (signal(SIGTERM, signal_handler) == SIG_ERR || signal(SIGINT, signal_handler) == SIG_ERR) {
+            logger(LOG_ERROR, "setup signal failed");
+            return 1;
+        }
+
+        return master->Start() ? 0 : 1;
+
+    } catch (const exception & exc) {
+
+        logger(LOG_ERROR, exc.what());
         return 1;
     }
 }

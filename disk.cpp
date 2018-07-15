@@ -2,6 +2,35 @@
 #include <sys/sendfile.h>
 
 
+bool Block::Wirte(Item *item, const char* buf, uint32_t len, off_t off)
+{
+    ssize_t n = pwrite(fd_, buf, len, item->pos + off);
+    return n == len;
+}
+
+
+bool Block::Read(Item *item, char* buf)
+{
+    ssize_t n = pread(fd_, buf, item->size, item->pos);
+    return n == (ssize_t)item->size;
+}
+
+
+bool Block::Send(Item *item, int sock, uint32_t& off)
+{
+    while (off < item->size){
+        off_t start = off + item->pos;
+        ssize_t n = sendfile(sock, fd_, &start, item->size - off);
+        if (n > 0) {
+            off += n;
+        } else {
+            return n < 0 && errno == EAGAIN;
+        }
+    }
+    return true;
+}
+
+
 Disk::Disk(const string& path, const uint32_t block_count, const size_t block_size)
 {
     path_ = path;
@@ -16,36 +45,21 @@ Disk::Disk(const string& path, const uint32_t block_count, const size_t block_si
 
 Disk::~Disk()
 {
-    for (auto b : blocks_) {
-        if (close(b.second.fd) < 0) {
-            return;
-        }
-    }
+    string temp = path_ + "meta.tmp";
+    string meta = path_ + "meta";
+
+    unlink(temp.c_str());
 
     // write to tmp first
-    int meta_fd = open((path_ + "meta.tmp").c_str(), O_RDWR);
+    int meta_fd = open(temp.c_str(), O_RDWR|O_CREAT, S_IRUSR|S_IWUSR);
     if (meta_fd < 0) {
         return;
     }
 
     MetaHeader header;
-    header.block_start = -1;
-    header.block_end = 0;
+    header.block_start = blocks_.begin()->first;
+    header.block_end = current_block_;
     header.item_count = 0;
-
-    for (auto b : blocks_) {
-        if (b.second.deleted) {
-            continue;
-        }
-
-        if (b.first < header.block_start) {
-            header.block_start = b.first;
-        }
-        
-        if (b.first > header.block_end) {
-            header.block_end = b.first;
-        }
-    }
 
     if (lseek(meta_fd, sizeof(header), SEEK_SET) < 0) {
         return;
@@ -54,10 +68,10 @@ Disk::~Disk()
     DiskItem ditem;
     for (auto dir_map : meta_) {
         for (auto id_item : dir_map.second) {
-            if (verify_item(id_item.second, now_)) {
-                to_disk_item(ditem, dir_map.first, id_item.first, id_item.second);
+            if (verify_item(id_item.second.get())) {
+                to_disk_item(ditem, dir_map.first, id_item.first, *id_item.second);
 
-                if (write(meta_fd, &ditem, sizeof(ditem)) == sizeof(ditem)){
+                if (write(meta_fd, &ditem, sizeof(ditem)) != sizeof(ditem)){
                     return;
                 }
 
@@ -79,7 +93,7 @@ Disk::~Disk()
     }
 
     // if everything ok, mv meta.tmp to tmp
-    rename((path_ + "meta.tmp").c_str(), (path_ + "meta").c_str());
+    rename(temp.c_str(), meta.c_str());
 }
 
 
@@ -88,15 +102,15 @@ bool Disk::Init()
     string meta_file = path_ + "meta";
 
     if (access(meta_file.c_str(), F_OK) == -1) {
-        return nextBlock();
-    }
-
-    if (unlink(meta_file.c_str()) < 0) {
-        return false;
+        return true;
     }
 
     int meta_fd = open(meta_file.c_str(), O_RDWR);
     if (meta_fd < 0) {
+        return false;
+    }
+
+    if (unlink(meta_file.c_str()) < 0) {
         return false;
     }
 
@@ -105,21 +119,21 @@ bool Disk::Init()
         return false;
     }
 
-    Block block;
     for (uint32_t i = header.block_start; i <= header.block_end; i++) {
-        block.use = 0;
-        block.deleted = 0;
+        string block_name = path_ + to_string(i);
 
-        block.fd = open(to_string(i).c_str(), O_RDWR);
-        if (block.fd > 0) {
-            blocks_[i] = block;
-            current_block_ = i;
+        int fd = open(block_name.c_str(), O_RDWR);
+        if (fd > 0) {
+            Block* block = new Block(fd, block_name);
+            blocks_[i] = shared_ptr<Block>(block);
         }
+
+        current_block_ = i;
     }
-    current_pos_ = block_size_; // use new block when add
+
+    current_pos_ = block_size_; // use new block when start
 
     for (uint32_t i = 0; i < header.item_count; i++) {
-        Item item;
         DiskItem ditem;
 
         if (read(meta_fd, &ditem, sizeof(ditem)) < (ssize_t)sizeof(ditem)) {
@@ -130,136 +144,129 @@ bool Disk::Init()
             continue;
         }
 
-        to_item(item, ditem);
-        meta_[ditem.dir][ditem.id] = item;
+        meta_[ditem.dir][ditem.id] = shared_ptr<Item>(to_item(ditem));
     }
 
     return close(meta_fd) >= 0;
 }
 
 
-void Disk::UpdateTime(uint32_t now)
+bool Disk::Add(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block)
 {
-    now_ = now;
-}
+    unique_lock<mutex> lock(meta_mutex_);
 
-
-Item* Disk::Add(const Key& dir, const Key& id, Item& item)
-{
-    if (item.size + current_pos_ > block_size_ ) {
-        if (!nextBlock()) {
-            return nullptr;
+    if (blocks_.size() == 0 || (item->size + current_pos_) > block_size_ ) {
+        if (!addBlock()) {
+            return false;
         }
     }
 
-    item.block = current_block_;
-    item.pos = current_pos_;
+    item->pos = current_pos_;
+    item->block = current_block_;
+    current_pos_ += item->size;
 
-    current_pos_ += item.size;
+    block = blocks_[item->block];
     meta_[dir][id] = item;
-    return &meta_[dir][id];
-}
 
-
-Item* Disk::Get(const Key& dir, const Key& id)
-{
-    if (meta_.find(dir) == meta_.end()) {
-        return nullptr;
-    }
-
-    if (meta_[dir].find(id) == meta_[dir].end()) {
-        return nullptr;
-    }
-
-    Item* item = &meta_[dir][id];
-    if (!verify_item(*item, now_)) {
-        return nullptr;
-    }
-
-    return item;
-}
-
-
-uint32_t Disk::Delete(const Key &dir, const Key &id, const uint16_t tags[])
-{
-    if (meta_.find(dir) == meta_.end()) {
-        return 0;
-    }
-
-    if (id == NULL_ITEM_KEY) {
-        uint32_t deleted = 0;
-
-        for (auto id_item: meta_[dir]) {
-            id_item.second.deleted = 1;
-
-            for (int i=0; i < TAG_LIMIT; i++) {
-                if (tags[i] != uint16_t(-1)
-                   && tags[i] != id_item.second.tags[i]) {
-                    id_item.second.deleted = 0;
-                    break;
-                }
-            }
-
-            deleted += id_item.second.deleted;
-        }
-
-        return deleted;
-    }
-
-    if (meta_[dir].find(id) == meta_[dir].end()) {
-        return false;
-    }
-
-    meta_[dir][id].deleted = 1;
-    return 1;
-}
-
-
-bool Disk::nextBlock()
-{
-    uint32_t n = 0;
-    uint32_t min = (uint32_t)-1;
-
-    for (auto b : blocks_) {
-        if (b.second.deleted == 0) {
-            if (b.first < min) {
-                min = b.first;
-            }
-            n++;
-        }
-    }
-
-    if (n > block_count_ && min != (uint32_t)-1) {
-        blocks_[min].deleted = 1;
-    }
-    current_block_++;
-    current_pos_ = 0;
-
-    Block block = {-1, 0, 0};
-    block.fd = open((path_ + to_string(current_block_)).c_str(), O_RDWR|O_CREAT, S_IRUSR|S_IWUSR);
-    if (block.fd < 0) {
-        return false;
-    }
-
-    blocks_[current_block_] = block;
     return true;
 }
 
 
-ssize_t Disk::Wirte(Item *item, char* buf)
+bool Disk::Get(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block)
 {
-    return pwrite(blocks_[item->block].fd, buf, item->size, item->pos);
+    unique_lock<mutex> lock(meta_mutex_);
+
+    if (meta_.find(dir) == meta_.end() 
+        || meta_[dir].find(id) == meta_[dir].end()
+        || !verify_item(meta_[dir][id].get())) {
+        return false;
+    }
+
+    item = meta_[dir][id];
+    block = blocks_[item->block];
+
+    return true;
 }
 
 
-ssize_t Disk::Read(Item *item, char* buf)
+uint32_t Disk::Delete(const size_t dir, const size_t id, const uint16_t tags[])
 {
-    return pread(blocks_[item->block].fd, buf, item->size, item->pos);
+    uint32_t deleted = 0;
+    unique_lock<mutex> lock(meta_mutex_);
+
+    if (dir == 0) {
+        for (auto &dir: meta_) {
+            deleted += dir.second.size();
+        }
+        meta_.clear();
+        return deleted;
+    }
+
+    if (meta_.find(dir) == meta_.end()) {
+        return 0;
+    }
+
+    if (id != 0) {
+        return (uint32_t)meta_[dir].erase(id);
+    }
+
+    auto dirmap = &meta_[dir];
+    auto iter = dirmap->begin();
+
+    while(iter != dirmap->end()) {
+        bool match = true;
+
+        for (int i = 0; i < TAG_LIMIT; i++) {
+            if (tags[i] != uint16_t(-1) && tags[i] != iter->second->tags[i]) {
+                match = false;
+                break;
+            }
+        }
+
+        if (match) {
+            deleted ++;
+            iter = meta_[dir].erase(iter);
+        } else {
+            iter ++;
+        }
+    }
+
+    return deleted;
 }
 
 
-ssize_t Disk::Send(Item *item, int sock, off_t off)
+bool Disk::addBlock()
 {
-    off_t start = off + item->pos;
-    return sendfile(sock, blocks_[item->block].fd, &start, item->size - off);
+    current_pos_ = 0;
+
+    if (blocks_.size() == block_count_) {
+        uint32_t block = blocks_.begin()->first;
+
+        for (auto &dir: meta_) {
+            auto j = dir.second.begin();
+            while (j != dir.second.end()) {
+                if (j->second->block == block) {
+                    j = dir.second.erase(j);
+                } else {
+                    j++;
+                }
+            }
+        }
+
+        blocks_.erase(block);
+    }
+
+    if (blocks_.size() != 0) {
+        current_block_++;
+    }
+
+    string name = path_ + to_string(current_block_);
+
+    int fd = open(name.c_str(), O_RDWR|O_CREAT, S_IRUSR|S_IWUSR);
+    if (fd < 0) {
+        return false;
+    }
+
+    blocks_[current_block_] = shared_ptr<Block>(new Block(fd, name));
+    return true;
 }

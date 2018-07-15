@@ -2,13 +2,17 @@
 
 #include <map>
 #include <list>
-#include <string>
+#include <regex>
+#include <mutex>
 #include <thread>
+#include <memory>
+#include <string>
 #include <limits>
 #include <string>
-#include <memory>
+#include <sstream>
+#include <fstream>
 #include <vector>
-#include <regex>
+#include <atomic>
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
@@ -40,8 +44,11 @@ enum RetCode{
 typedef struct sockaddr Address;
 const socklen_t ADDR_SIZE = sizeof(Address);
 
+const int EPOLL_WAIT_EVENTS = 1024;
+
 const int ETAG_LIMIT = 64;
 const int TAG_LIMIT = 4;
+
 const size_t BLOCK_SIZE = 128 * 1024 * 1024;
 const size_t ITEM_LIMIT = BLOCK_SIZE;
 

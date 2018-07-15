@@ -3,40 +3,10 @@
 #include "hornet.h"
 
 
-struct Key
-{
-	uint64_t data[2];
-
-	Key(){data[0] = data[1] = 0;}
-	Key(const Key &other){data[1]=other.data[1];data[0]=other.data[0];};
-	Key(const char *in){Load(in);}
-
-	bool operator == (const Key & other) const;
-	void Load(const char *in);
-	char* Dump(char *out);
-};
-
-
-const int KEY_CHAR_SIZE = sizeof(Key) * 2;
-const Key NULL_ITEM_KEY("ffffffffffffffffffffffffffffffff");
-
-
-struct KeyHash
-{
-	size_t operator ()(const Key& k) const;
-};
-
-
-struct KeyEqual
-{
-	bool operator () (const Key &k1, const Key &k2) const;
-};
-
-
 struct DiskItem
 {
-	Key id;
-	Key dir;
+	size_t id;
+	size_t dir;
 
 	uint64_t block;
 	uint16_t tags[TAG_LIMIT];
@@ -47,16 +17,12 @@ struct DiskItem
 
 	time_t modifed;
 	time_t expired;
-
-	char etag[ETAG_LIMIT];
 };
 
 
 struct Item
 {
-	uint32_t use:30; // 2 ^ 30 is enough
-	uint32_t deleted:1;
-	uint32_t putting:1;
+	bool putting;
 
 	uint32_t block;
 	uint16_t tags[TAG_LIMIT];
@@ -67,14 +33,13 @@ struct Item
 
 	uint32_t modifed; // 2038 is enough
 	uint32_t expired; 
-
-	char etag[ETAG_LIMIT];
 };
 
 
-typedef unordered_map<Key, Item, KeyHash, KeyEqual> ItemMap;
-typedef unordered_map<Key, ItemMap, KeyHash, KeyEqual> DirMap; 
+typedef unordered_map<size_t, shared_ptr<Item>> ItemMap;
+typedef unordered_map<size_t, ItemMap> DirMap;
 
-bool verify_item(const Item& item, uint32_t now);
-void to_item(Item& item, const DiskItem &ditem);
-void to_disk_item(DiskItem &ditem, const Key& dir, const Key& id, const Item& item);
+
+Item* to_item(const DiskItem &ditem);
+bool verify_item(const Item* item);
+void to_disk_item(DiskItem &ditem, const size_t dir, const size_t id, const Item& item);

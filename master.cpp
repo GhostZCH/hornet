@@ -1,61 +1,59 @@
 #include "master.h"
+#include "tool.h"
 
-
-Master::Master(map<string, string> &conf):EventEngine()
-{
-    conf_ = conf;
+void start_worker(Worker *w){
+    w->Forever();
 }
 
-
-bool Master::Init()
+bool Master::Start()
 {
-    now_ = time(NULL);
+    auto *d = new Disk(
+        g_config["disk.path"],
+        stoll(g_config["disk.block.count"]),
+        stoll(g_config["disk.block.size"])
+    );
 
-    disk_ = unique_ptr<Disk>(new Disk(
-        conf_["disk.path"],
-        (uint32_t)stoll(conf_["disk.block.count"]),
-        (size_t)stoll(conf_["disk.block.size"])
-    ));
-
-    if (!disk_->Init()) {
+    if (!d->Init()) {
         return false;
     }
 
-    disk_->UpdateTime(now_);
+    disk_ = unique_ptr<Disk>(d);
 
-    for (int id = 0; id < stoi(conf_["worker.count"]); id++) {
-        auto w = new Worker(id, disk_.get(), conf_);
-        if (!w->Init()) {
-            return false;
-        }
-        workers_.push_back(unique_ptr<Worker>(w));
+    short port = stoi(g_config["master.port"]);
+    auto accepter = shared_ptr<Handler>(new AcceptHandler(g_config["master.ip"], port, d));
+    if (accepter->fd < 0) {
+        logger(LOG_ERROR, "listen " << g_config["master.ip"] << ":" << port << "failed");
+        return false;
     }
 
-    // DiskHandler *disk = new DiskHandler();
-    // disk->fd = DISK_FD;
+    // auto *svr = new ServerHandler();
+    // disk->fd = -2;
     // AddHandler(disk);
     // AddTimer(disk->fd, 10);
 
-    AcceptHandler *accept = new AcceptHandler(
-        conf_["master.ip"],
-        stoi(conf_["master.port"]),
-        disk_.get(),
-        stoul(conf_["request.max_header_size"])
-    );
+    int wc = stoi(g_config["worker.count"]);
+    for (int i = 0; i < wc; i++) {
+        Worker* w = new Worker(i, d);
 
-    if (!accept->Init(this)) {
-        return false;
+        threads_.push_back((thread(start_worker, w)));
+        workers_.push_back(unique_ptr<Worker>(w));
+        if (!w->AddHandler(accepter) || !accepter->Init(w)) {
+            return false;
+        }
     }
 
-    return true;
+    bool re = Forever();
+    for (auto &t: threads_) {
+        t.join();
+    }
+    return re;
 }
 
 
 void Master::Stop()
 {
-    for (size_t i = 0; i < workers_.size(); i++) {
-        workers_[i]->Stop();
-    }
-
     EventEngine::Stop();
+    for (auto &w: workers_) {
+        w->Stop();
+    }
 }

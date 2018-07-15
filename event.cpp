@@ -1,12 +1,5 @@
 #include "event.h"
 
-Handler::~Handler()
-{
-    if (fd > 0) {
-        close(fd);
-    }
-}
-
 
 EventEngine::EventEngine(int connection_limit)
 {
@@ -24,7 +17,8 @@ EventEngine::EventEngine(int connection_limit)
 bool EventEngine::Forever()
 {
     while (run_) {
-        now_ = (uint32_t)time(nullptr);
+        update_time();
+        unique_lock<mutex> run(run_lock);
         if (!HandleEpollEvent() || !HandleTimerEvent()) {
             return false;
         }
@@ -39,17 +33,17 @@ void EventEngine::Stop() {
 }
 
 
-bool EventEngine::AddHandler(Handler *handler)
+bool EventEngine::AddHandler(shared_ptr<Handler>& h)
 {
     if (handlers_.size() >= (size_t)con_limit_) {
         return false;
     }
 
-    if (handlers_.find(handler->fd) != handlers_.end()) {
+    if (handlers_.find(h->fd) != handlers_.end()) {
         return false;
     }
 
-    handlers_[handler->fd] = unique_ptr<Handler>(handler);
+    handlers_[h->fd] = h;
     return true;
 }
 
@@ -85,7 +79,7 @@ bool EventEngine::AddTimer(int fd, uint32_t timeout, int id)
 {
     int64_t sub_id = fd;
 
-    timers_[timeout + now_].insert(sub_id << 32 | id);
+    timers_[timeout + g_hornet_now].insert(sub_id << 32 | id);
     return true;
 }
 
@@ -93,7 +87,7 @@ bool EventEngine::AddTimer(int fd, uint32_t timeout, int id)
 bool EventEngine::DelTimer(int fd, uint32_t timeout, int id)
 {
     int64_t sub_id = fd;
-    timers_[timeout + now_].erase(sub_id << 32 | id);
+    timers_[timeout + g_hornet_now].erase(sub_id << 32 | id);
     return true;
 }
 
@@ -129,27 +123,27 @@ bool EventEngine::HandleEpollEvent()
 
 bool EventEngine::HandleTimerEvent()
 {
-    for (auto iter = timers_.begin(); iter != timers_.end(); ) {
+    list<int64_t> expired;
 
-        if (iter->first > now_) {
-            break;
+    time_t now = g_hornet_now;
+    for (auto iter = timers_.begin(); iter->first < now && iter != timers_.end(); iter++) {
+        for (auto h: iter->second) {
+            expired.push_back(h);
+        }
+    }
+
+    for (auto h: expired) {
+        int fd = h >> 32 & 0xFFFFFFFF;
+
+        auto iter = handlers_.find(fd);
+        if (iter == handlers_.end()) {
+            continue;
         }
 
-        for (auto timer: iter->second) {
-            int fd = timer >> 32 & 0xFFFFFFFF;
-
-            auto iter = handlers_.find(fd);
-            if (iter != handlers_.end()) {
-                continue;
-            }
-
-            Event event = {0};
-            event.timer = true;
-            event.data.i = timer & 0xFFFFFFFF;
-            iter->second->Handle(&event, this);
-        }
-
-        iter = timers_.erase(iter);
+        Event event = {0};
+        event.timer = true;
+        event.data.i = h & 0xFFFFFFFF;
+        iter->second->Handle(&event, this);
     }
 
     return true;

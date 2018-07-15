@@ -11,13 +11,12 @@
 class Master: public EventEngine
 {
 public:
-    Master(map<string, string> &conf);
-
-    bool Init();
+    bool Start();
     void Stop();
 
 private:
-    map<string, string> conf_;
     unique_ptr<Disk> disk_;
+    vector<thread> threads_;
     vector<unique_ptr<Worker>> workers_;
 };
+ 

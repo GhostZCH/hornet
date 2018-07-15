@@ -2,14 +2,47 @@
 
 #include "hornet.h"
 #include "item.h"
-#include "event.h"
 #include "disk.h"
+#include "event.h"
+
+
+enum Phase
+{
+    PH_READ_HEADER,
+    PH_READ_BODY,
+    PH_SEND_MEM,
+    PH_SEND_DISK
+};
+
+
+struct Buffer
+{
+    size_t size;
+    size_t capcity;
+    size_t offset;
+    size_t processed;
+    unique_ptr<char []> data;
+};
+
+
+struct Request
+{
+    int method;
+    size_t id;
+    size_t dir;
+    uint16_t state;
+    uint32_t header_len;
+    uint32_t write_len;
+    uint32_t content_len;
+    map<string, string> args;
+    map<string, string> headers;
+};
 
 
 class ClientHandler:public Handler
 {
 public:
-    ClientHandler(Disk* disk, size_t buf_cap);
+    ClientHandler(Disk* disk);
 
     bool Init(EventEngine* engine);
     bool Close(EventEngine* engine);
@@ -17,26 +50,25 @@ public:
     bool Handle(Event* ev, EventEngine* engine);
 
 private:
-    bool handleRead();
-    bool handleWrite();
+    bool readHeader(Event* ev, EventEngine* engine);
+    bool readBody(Event* ev, EventEngine* engine);
+    bool sendMem(Event* ev, EventEngine* engine);
+    bool sendDisk(Event* ev, EventEngine* engine);
 
-    bool processReqLine(char *header_end);
-    bool setRspHeader();
+    bool handleRequest();
+    bool getItem();
+    bool addItem();
+    bool delItem();
 
-    bool reading_{true};
+    void reset();
 
-    int method_{0};
-    map<string, ssize_t> args_;
-    uint16_t state_;
+    Phase phase_{PH_READ_HEADER};
 
-    bool send_disk_{false};
-    unique_ptr<char []> buf_;
-    size_t process_len_{0};
-    size_t buf_size_{0};
-    size_t buf_capacity_{0};
-
-    size_t content_len{0};
+    Buffer recv_;
+    Buffer send_;
+    Request req_;
 
     Disk* disk_;
-    Item *item_{nullptr};
+    shared_ptr<Item> item_;
+    shared_ptr<Block> block_;
 };

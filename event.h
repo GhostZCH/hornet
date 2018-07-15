@@ -1,7 +1,7 @@
 #pragma once
 
 #include "hornet.h"
-
+#include "tool.h"
 
 struct Event
 {
@@ -24,7 +24,7 @@ class EventEngine;
 class Handler
 {
 public:
-    virtual ~Handler();
+    virtual ~Handler(){if (fd > 0) {close(fd);}}
 
     virtual bool Init(EventEngine* engine) = 0;
     virtual bool Close(EventEngine* engine) = 0;
@@ -43,7 +43,7 @@ public:
     bool Forever();
     virtual void Stop();
 
-    bool AddHandler(Handler *h);
+    bool AddHandler(shared_ptr<Handler>& h);
     bool DelHandler(int fd);
 
     bool AddEpollEvent(int fd, int flag=EPOLLIN|EPOLLOUT|EPOLLET|EPOLLHUP|EPOLLERR);
@@ -53,6 +53,8 @@ public:
     bool DelTimer(int fd, uint32_t timeout, int id=0);
 
     uint32_t Now();
+
+    mutex run_lock;
 
 protected:
     bool HandleEpollEvent();
@@ -65,10 +67,9 @@ protected:
     int con_limit_;
 
     // for timer events
-    uint32_t now_;
     uint32_t resolution_;
     map<uint32_t, unordered_set<int64_t>> timers_;
 
     // handler {fd: handler}
-    unordered_map<int, unique_ptr<Handler>> handlers_;
+    unordered_map<int, shared_ptr<Handler>> handlers_;
 };
