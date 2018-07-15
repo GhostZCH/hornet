@@ -46,44 +46,45 @@ Hornet是一个用C++开发针对CDN的轻量级缓存引擎。
 
 ## API
 
-+ 每个tag是一个不超过65535的整数(可以用来表示文件类型，子文件夹，子用户等属性, 协议，子域名)，65535为通配符（ffff），不检测这个设置，用不到可以将tag设置为固定值，传入用固定长度为4的16进制数字表示如（0a23），可以多个tag当做一个使用
++ 每个tag是一个不超过65535的整数，默认为0。可以用来表示文件类型，子文件夹，子用户等属性, 协议，子域名。删除时65535为通配符，不检测这个设置
 
-* GET /$dir/$id?tag1=$tag1&$tag2=$tag2 HTTP/1.1
+* GET /$dir/$id HTTP/1.1
 
     例如：
 
-        GET /1deab4b3bda9d0721b30c6a63e427eab/d41d8cd98f00b204e9800998ecf8427e?tag1=001e&tag2=ffff
-        log-header: www.myweb.com/2018/02/xxx.jpg?x=480&y=360
+        // get www.myweb.com/xxx.jpg
+        GET /12345/654123
 
 * PUT /$dir/$id?tag1=$tag1&$tag2=$tag2 HTTP/1.1
 
 	例如：
 
-        PUT /1deab4b3bda9d0721b30c6a63e427eab/d41d8cd98f00b204e9800998ecf8427e?tag1=001e&tag2=0000
-        log-header: www.myweb.com/2018/02/xxx.jpg?x=480&y=360
-
+        // add www.myweb.com/xxx.jpg
+        PUT /12345/654123?tag1=1
 
 * DEL /$dir/$id?tag1=$tag1&$tag2=$tag2 HTTP/1.1
 
 	例如：
 
-        DEL /1deab4b3bda9d0721b30c6a63e427eab/d41d8cd98f00b204e9800998ecf8427e?tag1=001e&tag2=0000 HTTP/1.1
-        log-header: www.myweb.com/2018/02/xxx.jpg?x=480&y=360
+        // delete www.myweb.com/xxx.jpg
+        DEL /12345/654123?tag1=1 HTTP/1.1
 
-        DEL /1deab4b3bda9d0721b30c6a63e427eab/ffffffffffffffffffffffffffffffff?tag1=001e&tag2=0000 HTTP/1.1
-        log-header: www.myweb.com/*.jpg
+        // delete www.myweb.com/*.jpg, id是0表示统配
+        DEL /12345/0?tag1=1 HTTP/1.1
 
-        DEL /1deab4b3bda9d0721b30c6a63e427eab/ffffffffffffffffffffffffffffffff?tag1=ffff&tag2=0000 HTTP/1.1
-        log-header: www.myweb.com/*
+        // delete www.myweb.com/*
+        DEL /12345/0?tag1=65535 HTTP/1.1
+
+        // delete */*
+        DEL /0/0?tag1=65535 HTTP/1.1
 
 ## 设计
 
 ### 架构
 
 master-worker
-+ master: 负责 accept 操作 meta
-+ worker: 负责读写数据
-+ master-worker通过非阻塞的 sockpair 进行通信，避免用锁
++ master: 负责 管理worker, 执行周期行的任务
++ worker: 负责读写数据，处理用户请求
 
 ### 文件系统
 
