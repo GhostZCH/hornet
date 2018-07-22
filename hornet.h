@@ -34,12 +34,8 @@
 
 using namespace std;
 
-
-enum RetCode{
-    RC_OK,
-    RC_ERR,
-    RC_AGN,
-};
+extern const char* VERSION_STR;
+extern const int VERSION;
 
 typedef struct sockaddr Address;
 const socklen_t ADDR_SIZE = sizeof(Address);
@@ -49,6 +45,7 @@ const int EPOLL_WAIT_EVENTS = 1024;
 const int ETAG_LIMIT = 64;
 const int TAG_LIMIT = 4;
 
+const size_t ACCESS_LOG_BUF = 4096;
 const size_t BLOCK_SIZE = 128 * 1024 * 1024;
 const size_t ITEM_LIMIT = BLOCK_SIZE;
 

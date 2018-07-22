@@ -42,5 +42,5 @@ void to_disk_item(DiskItem &ditem, const size_t dir, const size_t id, const Item
 
 bool verify_item(const Item* item)
 {
-	return !item->putting && item->expired > g_hornet_now;
+	return !item->putting && item->expired > g_now;
 }

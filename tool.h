@@ -3,12 +3,12 @@
 #include "hornet.h"
 
 
-const int LOG_INFO = 1;
-const int LOG_WARN = 2;
-const int LOG_ERROR = 3;
+const int LDEBUG = 1;
+const int LWARN = 2;
+const int LERROR = 3;
 
-extern time_t g_hornet_now;
-extern time_t g_hornet_now_ms;
+extern time_t g_now;
+extern time_t g_now_ms;
 
 extern map<string, string> g_config;
 
@@ -21,7 +21,7 @@ string get_time_str();
 
 bool set_logger(const string& level, ostream *logger);
 
-#define logger(level, stream) do { \
+#define LOG(level, stream) do { \
     if ((level) >= g_loglevel) { \
         (*g_logger) << get_time_str() << " [" << g_log_level_str[level] << "] "<< stream << endl;} \
     } while(0)

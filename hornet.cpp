@@ -1,7 +1,10 @@
 #include "hornet.h"
 #include "tool.h"
 #include "master.h"
-#include "accept_handler.h"
+
+
+const char* VERSION_STR = "1.0.0";
+const int VERSION = 10000;
 
 
 unique_ptr<Master> master;
@@ -10,7 +13,7 @@ unique_ptr<Master> master;
 void signal_handler(int sig)
 {
     static bool s_handle_signal = false;
-    logger(LOG_ERROR, "signal_handler: " << sig);
+    LOG(LERROR, "signal_handler: " << sig);
 
     if (!s_handle_signal) {
         s_handle_signal = true;
@@ -32,20 +35,20 @@ int main(int argc, char* argv[])
         }
 
         if (!load_conf(params["c"].second)) {
-            logger(LOG_ERROR, "load_conf failed");
+            LOG(LERROR, "load_conf failed");
             return 1;
         }
 
         ofstream errlog = ofstream(g_config["log.error"], ios_base::app);
         if (!errlog.is_open() || !set_logger(g_config["log.level"], &errlog)) {
-            logger(LOG_ERROR, "open errlog failed");
+            LOG(LERROR, "open errlog failed");
             return 1;
         }
 
         master = unique_ptr<Master>(new Master());
 
         if (signal(SIGTERM, signal_handler) == SIG_ERR || signal(SIGINT, signal_handler) == SIG_ERR) {
-            logger(LOG_ERROR, "setup signal failed");
+            LOG(LERROR, "setup signal failed");
             return 1;
         }
 
@@ -53,7 +56,7 @@ int main(int argc, char* argv[])
 
     } catch (const exception & exc) {
 
-        logger(LOG_ERROR, exc.what());
+        LOG(LERROR, exc.what());
         return 1;
     }
 }

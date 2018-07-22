@@ -5,22 +5,22 @@ using namespace chrono;
 ostream *g_logger;
 int g_loglevel;
 
-time_t g_hornet_now;
-time_t g_hornet_now_ms;
+time_t g_now;
+time_t g_now_ms;
 
 map<string, string> g_config;
 const char *g_log_level_str[] = {nullptr, "info", "warn", "error"};
 
 void update_time()
 {
-    g_hornet_now_ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-    g_hornet_now =  g_hornet_now_ms/ 1000;
+    g_now_ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+    g_now =  g_now_ms/ 1000;
 }
 
 string get_time_str()
 {
     char tmp[128] = {0};
-    strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&g_hornet_now));
+    strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&g_now));
     return tmp;
 }
 
@@ -29,9 +29,9 @@ bool set_logger(const string& level, ostream *logger)
 {
     map<string, int> loglevel;
 
-    loglevel["INFO"] = LOG_INFO;
-    loglevel["WARN"] = LOG_INFO;
-    loglevel["ERROR"] = LOG_INFO;
+    loglevel["DEBUG"] = LDEBUG;
+    loglevel["WARN"] = LWARN;
+    loglevel["ERROR"] = LERROR;
 
     if (loglevel.find(level) == loglevel.end()) {
         return false;
@@ -45,12 +45,15 @@ bool set_logger(const string& level, ostream *logger)
 
 void print_help(const map<string, pair<string, string>>& params)
 {
-    cout << "hornet [-key1 value1] [-key2 value2] ..." << endl;
-    cout << "param key as below:" << endl;
+    cout << "   Welcome to use hornet[" << VERSION_STR << "]\n"<< endl;
+    cout << "   commond: hornet [-param1 value1] [-param2 value2] ...\n" << endl;
+    cout << "   params:" << endl;
 
     for (auto i: params) {
-        cout << "\t-" << i.first << ":\t" << i.second.first << endl;
+        cout << "       -" << i.first << ":\t" << i.second.first << endl;
     }
+
+    cout << "\n" << endl;
 }
 
 

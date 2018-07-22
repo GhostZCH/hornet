@@ -79,7 +79,7 @@ bool EventEngine::AddTimer(int fd, uint32_t timeout, int id)
 {
     int64_t sub_id = fd;
 
-    timers_[timeout + g_hornet_now].insert(sub_id << 32 | id);
+    timers_[timeout + g_now].insert(sub_id << 32 | id);
     return true;
 }
 
@@ -87,7 +87,7 @@ bool EventEngine::AddTimer(int fd, uint32_t timeout, int id)
 bool EventEngine::DelTimer(int fd, uint32_t timeout, int id)
 {
     int64_t sub_id = fd;
-    timers_[timeout + g_hornet_now].erase(sub_id << 32 | id);
+    timers_[timeout + g_now].erase(sub_id << 32 | id);
     return true;
 }
 
@@ -125,7 +125,7 @@ bool EventEngine::HandleTimerEvent()
 {
     list<int64_t> expired;
 
-    time_t now = g_hornet_now;
+    time_t now = g_now;
     for (auto iter = timers_.begin(); iter->first < now && iter != timers_.end(); iter++) {
         for (auto h: iter->second) {
             expired.push_back(h);

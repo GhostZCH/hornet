@@ -3,9 +3,8 @@
 #include "hornet.h"
 #include "event.h"
 #include "disk.h"
-#include "accept_handler.h"
 #include "client_handler.h"
-#include "worker.h"
+#include "accept_handler.h"
 
 
 class Master: public EventEngine
@@ -17,6 +16,7 @@ public:
 private:
     unique_ptr<Disk> disk_;
     vector<thread> threads_;
-    vector<unique_ptr<Worker>> workers_;
+    vector<unique_ptr<EventEngine>> workers_;
+    vector<unique_ptr<AccessLog>> loggers_;
 };
  

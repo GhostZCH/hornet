@@ -2,12 +2,11 @@
 #include "client_handler.h"
 
 
-AcceptHandler::AcceptHandler(const string& ip, short port, Disk* disk)
+AcceptHandler::AcceptHandler(const string& ip, short port)
     :Handler()
 {
     ip_ = ip;
     port_ = port;
-    disk_ = disk;
 
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
@@ -49,18 +48,18 @@ bool AcceptHandler::Handle(Event* ev, EventEngine* engine)
         return true;
     }
 
-    logger(LOG_INFO, "worker" << engine << "getlock");
+    LOG(LDEBUG, "worker" << engine << "getlock");
 
     int cfd;
     Address addr;
     socklen_t addr_size = sizeof(addr);
 
     while ((cfd = accept4(fd, &addr, &addr_size, SOCK_NONBLOCK)) > 0) {
-        ClientHandler* client = new ClientHandler(disk_);
+        ClientHandler* client = new ClientHandler();
         client->fd = cfd;
 
         if (!client->Init(engine)) {
-            logger(LOG_ERROR, "client " << cfd << "init failed");
+            LOG(LERROR, "client " << cfd << "init failed");
             return false;
         }
     }

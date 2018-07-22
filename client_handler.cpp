@@ -36,14 +36,15 @@ unordered_map<string, int> g_http_methods(
     http_methods,
     http_methods + sizeof(http_methods) / sizeof(pair<string, int>));
 
-
+const char *LOG_FROMART = "%d %llu %llu %s %s %u %lu\n";
 const char* RSP_TEMPLATE = "HTTP/1.1 %d %s\r\nContent-Length: 0\r\n\r\n";
 const regex ARG_REGEX("(\\w+)=(\\w+)&?");
 const regex HEADER_REGEX("(.+): (\\w+)\r\n");
 const regex REQ_LINE_REGEX("^(GET|POST|PUT) /(\\d+)/(\\d+)\\??""(.*) HTTP/1.1\r\n");
 
 
-bool parse_tags(const map<string, string>& args, uint16_t* tags) 
+
+const char* parse_tags(const map<string, string>& args, uint16_t* tags)
 {
     for (int i = 0; i < TAG_LIMIT; i++) {
         tags[i] = 0;
@@ -51,12 +52,12 @@ bool parse_tags(const map<string, string>& args, uint16_t* tags)
         if (iter != args.end()) {
             int temp = stoi(iter->second);
             if (temp < 0 || temp > 65534) {
-                return false;
+                return "tags not in range [0, 65534]";
             }
             tags[i] = temp;
         }
     }
-    return true;
+    return nullptr;
 }
 
 
@@ -88,11 +89,41 @@ bool send_buf(int fd, Buffer& buf)
 }
 
 
-ClientHandler::ClientHandler(Disk* disk)
+void AccessLog::Log(const Request& r)
+{
+    const int TRY_LIMIT = 2;
+
+    bool finish = false;
+    for (int i = 0; i < TRY_LIMIT && !finish; i++){
+        int n = snprintf(buf_, ACCESS_LOG_BUF - size_, LOG_FROMART,
+                         VERSION, g_now, g_now_ms - r.start,
+                         r.method_str, r.uri_str, r.state,
+                         r.content_len);
+
+        finish = buf_[size_ + n] == '\n';
+        if(finish) {
+            size_ += n;
+            if (size_ < ACCESS_LOG_BUF - 1024 ) {
+                return;
+            }
+        }
+
+        write(fd_, buf_, size_);
+        size_ = 0;
+    }
+}
+
+
+AccessLog::~AccessLog()
+{
+    write(fd_, buf_, size_);
+    size_ = 0;
+}
+
+
+ClientHandler::ClientHandler()
     :Handler()
 {
-    disk_ = disk;
-
     send_.capcity = stoull(g_config["request.send_buf"]);
     recv_.capcity = stoull(g_config["request.recv_buf"]);
     send_.data = unique_ptr<char []>(new char[send_.capcity]);
@@ -104,6 +135,9 @@ ClientHandler::ClientHandler(Disk* disk)
 
 bool ClientHandler::Init(EventEngine* engine)
 {
+    disk_ = (Disk *)engine->context["disk"];
+    logger_ = (AccessLog *)engine->context["access"];
+
     auto h = shared_ptr<Handler>(this);
     return engine->AddHandler(h) && engine->AddEpollEvent(fd);
 }
@@ -134,10 +168,12 @@ void ClientHandler::reset()
 
     send_.size = send_.offset = send_.processed = 0;
     recv_.size = recv_.offset = recv_.processed = 0;
+
+    error_ = nullptr;
 }
 
 
-bool ClientHandler::getItem()
+void ClientHandler::getItem()
 {
     phase_ = PH_SEND_MEM;
     req_.state = STATUS_NOT_FOUND;
@@ -146,25 +182,25 @@ bool ClientHandler::getItem()
         phase_ = PH_SEND_DISK;
         req_.state = STATUS_OK;
     }
-
-    return true;
 }
 
 
-bool ClientHandler::addItem()
+void ClientHandler::addItem()
 {
     if (!disk_->Get(req_.dir, req_.id, item_, block_)) {
         req_.state = STATUS_OK;
-        return true;
+        return;
     }
 
     if (req_.args.find("Content-Length") == req_.args.end()) {
-        return false;
+        error_ = "NO_CONTENT_LENTH";
+        return;
     }
 
     size_t cl = stoull(req_.args["Content-Length"]);
     if (cl > stoull(g_config["disk.block.size"])) {
-        return false; 
+        error_ = "ITEM_TOO_BIG";
+        return;
     }
 
     stringstream buf("HTTP/1.1 200 OK\r\nServer: Hornet\r\n");
@@ -180,55 +216,60 @@ bool ClientHandler::addItem()
     item->header_size = header.size();
     item->size = item->header_size + cl;
 
-    if (!parse_tags(req_.args, item->tags)) {
-        return false;
+    const char* err = parse_tags(req_.args, item->tags);
+    if (err != nullptr) {
+        error_ = err;
+        return;
     }
 
     if (disk_->Add(req_.dir, req_.id, item, block_)) {
-        return false;
+        error_ = "ADD_DISK_FAILD";
+        return;
     }
 
     if (!block_->Wirte(item_.get(), header.c_str(), header.size(), 0)) {
-        return false;
+        error_ = "WRITE_FAILD";
+        return;
     }
     
     req_.write_len = item_->header_size;
     if (!block_->Wirte(item_.get(), recv_.data.get() + req_.header_len,
                        recv_.size - req_.header_len, req_.write_len)) {
-        return false;
+        error_ = "WRITE_FAILD";
+        return;
     }
 
     phase_ = PH_READ_BODY;
     recv_.processed = req_.header_len;
-    return true;
 }
 
 
-bool ClientHandler::delItem()
+void ClientHandler::delItem()
 {
     uint16_t tags[TAG_LIMIT];
 
-    if (!parse_tags(req_.args, tags)) {
-        return false;
+    const char* err = parse_tags(req_.args, tags);
+    if (err != nullptr) {
+        error_ = err;
+        return;
     }
 
     req_.state = STATUS_NOT_FOUND;
     if (disk_->Delete(req_.dir, req_.id, tags) > 0) {
         req_.state = STATUS_OK;
     }
-
-    return true;
 }
 
 
-bool ClientHandler::readHeader(Event* ev, EventEngine* engine)
+void ClientHandler::readHeader(Event* ev, EventEngine* engine)
 {
     if (!ev->read) {
-        return true;
+        return;
     }
 
     if (!read_buf(fd, recv_)) {
-        return false;
+        error_ = "READ_CLIENT_FAILD";
+        return;
     }
 
     char *start = recv_.data.get() + recv_.processed;
@@ -238,9 +279,10 @@ bool ClientHandler::readHeader(Event* ev, EventEngine* engine)
 
     if (end == nullptr) {
         if (recv_.size == recv_.capcity) {
-            return false;
+            error_ = "HEADER_TOO_LARGE";
+            return;
         }
-        return true;
+        return;
     }
 
     phase_ = PH_SEND_MEM;
@@ -252,7 +294,8 @@ bool ClientHandler::readHeader(Event* ev, EventEngine* engine)
     // method
     auto m = g_http_methods.find(req_match[1].str());
     if (m == g_http_methods.end()) {
-        return false;
+        error_ = "UNKOWN_METHOD";
+        return;
     }
 
     req_.method = m->second;
@@ -289,32 +332,30 @@ bool ClientHandler::readHeader(Event* ev, EventEngine* engine)
 
         case METHOD_PUT:
         case METHOD_POST:
-            if (!addItem()) {
-                 return false;
+            addItem();
+            if (error_ == nullptr) {
+                ev->write = false;
+                ev->read = true;
             }
-            ev->write = false;
-            ev->read = true;
-            return true;
+            return;
 
         case METHOD_DELETE:
             return delItem();
-
-        default:
-            return false;
     }
 }
 
 
-bool ClientHandler::readBody(Event* ev, EventEngine* engine)
+void ClientHandler::readBody(Event* ev, EventEngine* engine)
 {
     if (!ev->read) {
-        return true;
+        return;
     }
 
     while (read_buf(fd, recv_)) {
         if (!block_->Wirte(item_.get(), recv_.data.get() + recv_.processed,
                         recv_.size - recv_.processed, req_.write_len)) {
-            return false;
+            error_ = "WRITE_FAILD";
+            return;
         }
 
         if (recv_.size == 0)  {
@@ -323,21 +364,21 @@ bool ClientHandler::readBody(Event* ev, EventEngine* engine)
                 ev->read = false;
                 ev->write = true;
             }
-            return true;
+            return;
         }
 
         req_.write_len += recv_.size - recv_.processed;
         recv_.processed = recv_.size = 0;
     }
 
-    return false;
+    error_ = "READ_CLIENT_FAILD";
 }
 
 
-bool ClientHandler::sendMem(Event* ev, EventEngine* engine)
+void ClientHandler::sendMem(Event* ev, EventEngine* engine)
 {
     if (!ev->write) {
-        return true;
+        return;
     }
 
     if (send_.size == 0) {
@@ -346,63 +387,66 @@ bool ClientHandler::sendMem(Event* ev, EventEngine* engine)
     }
 
     if (!send_buf(fd, send_)){
-        return false;
+        error_ = "SEND_CLIENT_FAILD";
+        return;
     }
     ev->read = ev->write = ev->error = false;
 
     if (send_.offset == send_.size) {
-        reset();
+        phase_ = PH_LOG;
     }
-
-    return true;
 }
 
 
-bool ClientHandler::sendDisk(Event* ev, EventEngine* engine)
+void ClientHandler::sendDisk(Event* ev, EventEngine* engine)
 {
     if (!ev->write) {
-        return true;
+        return;
     }
 
     if (!block_->Send(item_.get(), fd, req_.write_len)) {
-        return false;
+        error_ = "SEND_CLIENT_FAILD";
+        return;
     }
 
     if (req_.write_len == item_->size) {
-        reset();
+        phase_ = PH_LOG;
     }
-
-    return true;
 }
 
 
 bool ClientHandler::Handle(Event* ev, EventEngine* engine)
 {
-    bool rc = true;
-
-    while (rc && (ev->write || ev->read)) {
+    while (error_ == nullptr && (ev->write || ev->read)) {
         switch (phase_) {
             case PH_READ_HEADER:
-                rc = readHeader(ev, engine);
+                readHeader(ev, engine);
                 break;
 
             case PH_READ_BODY:
-                rc = readBody(ev, engine);
+                readBody(ev, engine);
                 break;
 
             case PH_SEND_MEM: 
-                rc = sendMem(ev, engine);
+                sendMem(ev, engine);
                 break;
 
             case PH_SEND_DISK:
-                rc = sendDisk(ev, engine);
+                sendDisk(ev, engine);
+                break;
+
+            case PH_LOG:
+                logger_->Log(req_);
+                if (error_ == nullptr) {
+                    reset();
+                }
                 break;
 
             default:
-                logger(LOG_ERROR, "unknown phase " << phase_);
+                LOG(LERROR, "unknown phase " << phase_);
                 return false;
         }
     }
 
-    return rc;
+    return error_ == nullptr;
 }

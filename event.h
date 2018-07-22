@@ -55,6 +55,7 @@ public:
     uint32_t Now();
 
     mutex run_lock;
+    map<string, void*> context;
 
 protected:
     bool HandleEpollEvent();
