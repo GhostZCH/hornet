@@ -49,6 +49,7 @@ public:
     AccessLog(int fd):fd_(fd){};
     ~AccessLog();
     void Log(const Request& r);
+    void Flush();
 
 private:
     int fd_;

@@ -45,9 +45,9 @@ bool Hornet::Start()
         return false;
     }
 
-    int access = open(get_conf("access").c_str(), O_APPEND|O_CREAT, S_IRUSR|S_IWUSR);
+    int access = open(get_conf("log.access").c_str(), O_WRONLY|O_APPEND|O_CREAT, S_IWUSR);
     if (access < 0) {
-        LOG(LERROR, "open access log file" << get_conf("access") << "failed");
+        LOG(LERROR, "open access log file" << get_conf("log.access") << "failed");
         return false;
     }
 

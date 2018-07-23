@@ -95,29 +95,35 @@ void AccessLog::Log(const Request& r)
 
     bool finish = false;
     for (int i = 0; i < TRY_LIMIT && !finish; i++){
-        int n = snprintf(buf_, ACCESS_LOG_BUF - size_, LOG_FROMART,
+        int n = snprintf(buf_ + size_, ACCESS_LOG_BUF - size_, LOG_FROMART,
                          VERSION, g_now, g_now_ms - r.start,
                          r.method_str, r.uri_str, r.state,
                          r.content_len);
 
-        finish = buf_[size_ + n] == '\n';
+        finish = buf_[size_ + n - 1] == '\n';
         if(finish) {
             size_ += n;
-            if (size_ < ACCESS_LOG_BUF - 1024 ) {
+            cout << size_ << endl;
+            if (size_ < ACCESS_LOG_BUF - 1024U ) {
                 return;
             }
         }
 
-        write(fd_, buf_, size_);
-        size_ = 0;
+        Flush();
     }
+}
+
+
+void AccessLog::Flush()
+{
+    write(fd_, buf_, size_);
+    size_ = 0;
 }
 
 
 AccessLog::~AccessLog()
 {
-    write(fd_, buf_, size_);
-    size_ = 0;
+    Flush();
 }
 
 

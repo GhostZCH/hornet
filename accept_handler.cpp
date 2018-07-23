@@ -48,8 +48,6 @@ bool AcceptHandler::Handle(Event* ev, EventEngine* engine)
         return true;
     }
 
-    LOG(LDEBUG, "worker" << engine << "getlock");
-
     int cfd;
     Address addr;
     socklen_t addr_size = sizeof(addr);
