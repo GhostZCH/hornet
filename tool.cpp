@@ -102,3 +102,10 @@ bool load_conf(string filename)
 
     return true;
 }
+
+
+string& get_conf(const string& name)
+{
+    // return "" if not exist
+    return g_config[name];
+}

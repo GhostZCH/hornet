@@ -10,7 +10,6 @@ const int LERROR = 3;
 extern time_t g_now;
 extern time_t g_now_ms;
 
-extern map<string, string> g_config;
 
 extern ostream* g_logger;
 extern int g_loglevel;
@@ -27,4 +26,5 @@ bool set_logger(const string& level, ostream *logger);
     } while(0)
 
 bool load_conf(string filename);
+string& get_conf(const string& name);
 bool get_param(int argc, char *argv[], map<string, pair<string, string>>& params);

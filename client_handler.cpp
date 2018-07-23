@@ -124,8 +124,8 @@ AccessLog::~AccessLog()
 ClientHandler::ClientHandler()
     :Handler()
 {
-    send_.capcity = stoull(g_config["request.send_buf"]);
-    recv_.capcity = stoull(g_config["request.recv_buf"]);
+    send_.capcity = stoull(get_conf("request.send_buf"));
+    recv_.capcity = stoull(get_conf("request.recv_buf"));
     send_.data = unique_ptr<char []>(new char[send_.capcity]);
     recv_.data = unique_ptr<char []>(new char[recv_.capcity]);
 
@@ -198,7 +198,7 @@ void ClientHandler::addItem()
     }
 
     size_t cl = stoull(req_.args["Content-Length"]);
-    if (cl > stoull(g_config["disk.block.size"])) {
+    if (cl > stoull(get_conf("disk.block.size"))) {
         error_ = "ITEM_TOO_BIG";
         return;
     }
