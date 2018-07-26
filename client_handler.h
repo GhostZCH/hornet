@@ -38,8 +38,9 @@ struct Request
     uint32_t content_len;
     map<string, string> args;
     map<string, string> headers;
-    char *method_str;
-    char *uri_str;
+    string method_str;
+    string uri_str;
+    const char* error;
 };
 
 
@@ -91,6 +92,4 @@ private:
     AccessLog* logger_;
     shared_ptr<Item> item_;
     shared_ptr<Block> block_;
-
-    const char* error_;
 };
