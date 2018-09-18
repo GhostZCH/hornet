@@ -428,7 +428,11 @@ void ClientHandler::sendDisk(Event* ev, EventEngine* engine)
 
 bool ClientHandler::Handle(Event* ev, EventEngine* engine)
 {
-    while (req_.error == nullptr && (ev->write || ev->read)) {
+    while (ev->write || ev->read) {
+        if (req_.error != nullptr) {
+            phase_ = PH_LOG;
+        }
+
         switch (phase_) {
             case PH_READ_HEADER:
                 readHeader(ev, engine);
