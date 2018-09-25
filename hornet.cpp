@@ -14,29 +14,28 @@ class Hornet: public EventEngine
 public:
     bool Start();
     void Stop();
+    void Reopen();
 
 private:
     unique_ptr<Disk> disk_;
     vector<thread> threads_;
     vector<unique_ptr<EventEngine>> workers_;
-    vector<unique_ptr<AccessLog>> loggers_;
+    vector<unique_ptr<AccessLog>> access_log_;
 };
 
 
 bool Hornet::Start()
 {
-    auto *d = new Disk(
+    disk_ = unique_ptr<Disk>(new Disk(
         get_conf("disk.path"),
         stoll(get_conf("disk.block.count")),
         stoll(get_conf("disk.block.size"))
-    );
+    ));
 
-    if (!d->Init()) {
+    if (!disk_->Init()) {
         LOG(LERROR, "disk init failed");
         return false;
     }
-
-    disk_ = unique_ptr<Disk>(d);
 
     short port = stoi(get_conf("master.port"));
     auto accepter = shared_ptr<Handler>(new AcceptHandler(get_conf("master.ip"), port));
@@ -45,27 +44,24 @@ bool Hornet::Start()
         return false;
     }
 
-    int access = open(get_conf("log.access").c_str(), O_WRONLY|O_APPEND|O_CREAT, S_IWUSR);
-    if (access < 0) {
-        LOG(LERROR, "open access log file" << get_conf("log.access") << "failed");
-        return false;
-    }
-
     int wc = stoi(get_conf("worker.count"));
     for (int i = 0; i < wc; i++) {
-        AccessLog* l = new AccessLog(access);
-        EventEngine* w = new EventEngine();
-        w->context["disk"] = d;
-        w->context["access"] = l;
+        auto log = unique_ptr<AccessLog>(new AccessLog(get_conf("log.access")));
+        if (!log->Init()) {
+            return false;
+        }
+        access_log_.push_back(log);
 
-        if (!w->AddHandler(accepter) || !accepter->Init(w)) {
+        EventEngine* worker = new EventEngine();
+        worker->context["disk"] = disk_.get();
+        worker->context["access"] = log.get();
+
+        if (!worker->AddHandler(accepter) || !accepter->Init(worker)) {
             return false;
         }
 
-        loggers_.push_back(unique_ptr<AccessLog>(l));
-        workers_.push_back(unique_ptr<EventEngine>(w));
-
-        threads_.push_back(thread([w]()->void{w->Forever();}));
+        workers_.push_back(unique_ptr<EventEngine>(worker));
+        threads_.push_back(thread([worker]()->void{worker->Forever();}));
     }
 
     // auto *svr = new ServerHandler();
@@ -91,18 +87,28 @@ void Hornet::Stop()
 }
 
 
+void Hornet::Reopen()
+{
+    for (auto &log: access_log_) {
+        log->Reopen();
+    }
+}
+
+
 unique_ptr<Hornet> server;
 
 
 void signal_handler(int sig)
 {
-    static bool s_handle_signal = false;
     LOG(LERROR, "signal_handler: " << sig);
 
-    if (!s_handle_signal) {
-        s_handle_signal = true;
-        server->Stop();
+    // reopen log file
+    if (sig == SIGUSR1) {
+        server->Reopen();
+        return;
     }
+
+    server->Stop();
 }
 
 
@@ -132,7 +138,8 @@ int main(int argc, char* argv[])
         server = unique_ptr<Hornet>(new Hornet());
 
         if (signal(SIGTERM, signal_handler) == SIG_ERR 
-            || signal(SIGINT, signal_handler) == SIG_ERR) {
+            || signal(SIGINT, signal_handler) == SIG_ERR
+            || signal(SIGUSR1, signal_handler) == SIG_ERR) {
             LOG(LERROR, "setup signal failed");
             return 1;
         }

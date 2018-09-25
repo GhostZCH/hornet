@@ -49,10 +49,8 @@ public:
     bool AddEpollEvent(int fd, int flag=EPOLLIN|EPOLLOUT|EPOLLET|EPOLLHUP|EPOLLERR);
     bool DelEpollEvent(int fd);
 
-    bool AddTimer(int fd, uint32_t timeout, int id=0);
-    bool DelTimer(int fd, uint32_t timeout, int id=0);
-
-    uint32_t Now();
+    bool AddTimer(int fd, time_t timeout, int id=0);
+    bool DelTimer(int fd, time_t timeout, int id=0);
 
     mutex run_lock;
     map<string, void*> context;
@@ -68,8 +66,8 @@ protected:
     int con_limit_;
 
     // for timer events
-    uint32_t resolution_;
-    map<uint32_t, unordered_set<int64_t>> timers_;
+    time_t resolution_;
+    map<time_t, unordered_set<int64_t>> timers_;
 
     // handler {fd: handler}
     unordered_map<int, shared_ptr<Handler>> handlers_;

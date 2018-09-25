@@ -45,7 +45,6 @@ const regex HEADER_REGEX("(.+): (\\w+)\r\n");
 const regex REQ_LINE_REGEX("^(GET|POST|PUT|DELETE) /(\\d+)/(\\d+)\\??""(.*) HTTP/1.1\r\n");
 
 
-
 const char* parse_tags(const map<string, string>& args, uint16_t* tags)
 {
     for (int i = 0; i < TAG_LIMIT; i++) {
@@ -91,47 +90,12 @@ bool send_buf(int fd, Buffer& buf)
 }
 
 
-void AccessLog::Log(const Request& r)
-{
-    const int TRY_LIMIT = 2;
-
-    bool finish = false;
-    for (int i = 0; i < TRY_LIMIT && !finish; i++){
-        int n = snprintf(buf_ + size_, ACCESS_LOG_BUF - size_, LOG_FROMART,
-                         VERSION, g_now, g_now_ms - r.start,
-                         r.method_str.c_str(), r.uri_str.c_str(),
-                         r.state, r.content_len,
-                         r.error == nullptr ? "-": r.error);
-
-        finish = buf_[size_ + n - 1] == '\n';
-        if(finish) {
-            size_ += n;
-            if (size_ < ACCESS_LOG_BUF - 1024U ) {
-                return;
-            }
-        }
-
-        Flush();
-    }
-}
-
-
-void AccessLog::Flush()
-{
-    write(fd_, buf_, size_);
-    size_ = 0;
-}
-
-
-AccessLog::~AccessLog()
-{
-    Flush();
-}
-
 
 ClientHandler::ClientHandler()
     :Handler()
 {
+    timeout_ = 0;
+
     send_.capcity = stoull(get_conf("request.send_buf"));
     recv_.capcity = stoull(get_conf("request.recv_buf"));
     send_.data = unique_ptr<char []>(new char[send_.capcity]);
@@ -147,12 +111,17 @@ bool ClientHandler::Init(EventEngine* engine)
     logger_ = (AccessLog *)engine->context["access"];
 
     auto h = shared_ptr<Handler>(this);
-    return engine->AddHandler(h) && engine->AddEpollEvent(fd);
+    timeout_ = g_now + stoull(get_conf("request.timeout"));
+    return engine->AddHandler(h) && engine->AddEpollEvent(fd) && engine->AddTimer(fd, timeout_, 0);
 }
 
 
 bool ClientHandler::Close(EventEngine* engine)
 {
+    if (!engine->DelTimer(fd, timeout_, 0)) {
+        return false;
+    }
+
     return engine->DelEpollEvent(fd) && engine->DelHandler(fd);
 }
 
@@ -264,10 +233,7 @@ void ClientHandler::delItem()
         return;
     }
 
-    req_.state = STATUS_NOT_FOUND;
-    if (disk_->Delete(req_.dir, req_.id, tags) > 0) {
-        req_.state = STATUS_OK;
-    }
+    disk_->Delete(req_.dir, req_.id, tags);
 }
 
 
@@ -404,7 +370,7 @@ void ClientHandler::sendMem(Event* ev, EventEngine* engine)
     ev->read = ev->write = ev->error = false;
 
     if (send_.offset == send_.size) {
-        phase_ = PH_LOG;
+        phase_ = PH_FINISH;
     }
 }
 
@@ -421,16 +387,59 @@ void ClientHandler::sendDisk(Event* ev, EventEngine* engine)
     }
 
     if (req_.write_len == item_->size) {
-        phase_ = PH_LOG;
+        phase_ = PH_FINISH;
     }
 }
 
 
+void ClientHandler::finish(Event* ev, EventEngine* engine)
+{
+    ev->write = ev->read = ev->timer = false;
+
+    ssize_t n = snprintf(logger_->Buffer(), ACCESS_LOG_BUF,
+                        LOG_FROMART, VERSION,
+                        g_now, g_now_ms - req_.start,
+                        req_.method_str.c_str(), req_.uri_str.c_str(),
+                        req_.state, req_.content_len,
+                        req_.error == nullptr ? "-": req_.error);
+
+    logger_->Log(logger_->Buffer(), n);
+
+    if (req_.error != nullptr) {
+        return;
+    }
+
+    reset();
+
+    if (!engine->DelTimer(fd, timeout_, 0)) {
+        LOG(LERROR, "ClientHandler::finish DelTimer error");
+        req_.error = "SYS_ERROR";
+    }
+
+    timeout_ += g_now + stoull(get_conf("request.timeout"));
+    if (!engine->AddTimer(fd, timeout_, 0)) {
+        LOG(LERROR, "ClientHandler::finish AddTimer error");
+        req_.error = "SYS_ERROR";
+    }
+}
+
+
+void ClientHandler::timeout(Event* ev, EventEngine* engine)
+{
+    if (!ev->timer) {
+        return;
+    }
+
+    req_.error = "TIMEOUT";
+}
+
 bool ClientHandler::Handle(Event* ev, EventEngine* engine)
 {
-    while (ev->write || ev->read) {
-        if (req_.error != nullptr) {
-            phase_ = PH_LOG;
+    while (ev->write || ev->read || ev->timer) {
+        timeout(ev, engine);
+
+        if (req_.error) {
+            phase_ = PH_FINISH;
         }
 
         switch (phase_) {
@@ -450,11 +459,8 @@ bool ClientHandler::Handle(Event* ev, EventEngine* engine)
                 sendDisk(ev, engine);
                 break;
 
-            case PH_LOG:
-                logger_->Log(req_);
-                if (req_.error == nullptr) {
-                    reset();
-                }
+            case PH_FINISH:
+                finish(ev, engine);
                 break;
 
             default:

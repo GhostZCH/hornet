@@ -75,19 +75,29 @@ bool EventEngine::DelEpollEvent(int fd)
 }
 
 
-bool EventEngine::AddTimer(int fd, uint32_t timeout, int id)
+bool EventEngine::AddTimer(int fd, time_t timeout, int id)
 {
     int64_t sub_id = fd;
 
-    timers_[timeout + g_now].insert(sub_id << 32 | id);
+    timers_[timeout].insert(sub_id << 32 | id);
     return true;
 }
 
 
-bool EventEngine::DelTimer(int fd, uint32_t timeout, int id)
+bool EventEngine::DelTimer(int fd, time_t timeout, int id)
 {
-    int64_t sub_id = fd;
-    timers_[timeout + g_now].erase(sub_id << 32 | id);
+    auto iter = timers_.find(timeout);
+    if (iter == timers_.end()) {
+        return true;
+    }
+
+    int64_t tid = fd;
+    tid = tid << 32 | id;
+    if (iter->second.find(tid) == iter->second.end()) {
+        return true;
+    }
+
+    timers_[timeout].erase(tid);
     return true;
 }
 

@@ -4,7 +4,7 @@
 #include "item.h"
 #include "disk.h"
 #include "event.h"
-
+#include "access_log.h"
 
 enum Phase
 {
@@ -12,7 +12,7 @@ enum Phase
     PH_READ_BODY,
     PH_SEND_MEM,
     PH_SEND_DISK,
-    PH_LOG,
+    PH_FINISH,
 };
 
 
@@ -44,21 +44,6 @@ struct Request
 };
 
 
-class AccessLog
-{
-public:
-    AccessLog(int fd):fd_(fd){};
-    ~AccessLog();
-    void Log(const Request& r);
-    void Flush();
-
-private:
-    int fd_;
-    size_t size_;
-    char buf_[ACCESS_LOG_BUF];
-};
-
-
 class ClientHandler:public Handler
 {
 public:
@@ -74,6 +59,8 @@ private:
     void readBody(Event* ev, EventEngine* engine);
     void sendMem(Event* ev, EventEngine* engine);
     void sendDisk(Event* ev, EventEngine* engine);
+    void finish(Event* ev, EventEngine* engine);
+    void timeout(Event* ev, EventEngine* engine);
 
     void handleRequest();
     void getItem();
@@ -87,6 +74,7 @@ private:
     Buffer recv_;
     Buffer send_;
     Request req_;
+    time_t timeout_;
 
     Disk* disk_;
     AccessLog* logger_;
