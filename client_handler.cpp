@@ -35,7 +35,8 @@ pair<string, int> http_methods[] = {
 
 unordered_map<string, int> g_http_methods(
     http_methods,
-    http_methods + sizeof(http_methods) / sizeof(pair<string, int>));
+    http_methods + sizeof(http_methods) / sizeof(pair<string, int>)
+);
 
 // version time time-cost method uri stat content-len error 
 const char *LOG_FROMART = "%d %llu %llu %s %s %u %lu %s\n";
