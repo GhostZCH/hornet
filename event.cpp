@@ -153,7 +153,11 @@ bool EventEngine::HandleTimerEvent()
         Event event = {0};
         event.timer = true;
         event.data.i = h & 0xFFFFFFFF;
-        iter->second->Handle(&event, this);
+        if (!iter->second->Handle(&event, this)) {
+            if (!iter->second->Close(this)) {
+                return false;
+            }
+        }
     }
 
     return true;

@@ -43,7 +43,7 @@ const char *LOG_FROMART = "%d %llu %llu %s %s %u %lu %s\n";
 
 const char* RSP_TEMPLATE = "HTTP/1.1 %d %s\r\nContent-Length: 0\r\n\r\n";
 const regex ARG_REGEX("(\\w+)=(\\w+)&?");
-const regex HEADER_REGEX("(.+): (\\w+)\r\n");
+const regex HEADER_REGEX("(.+): (.+)\r\n");
 const regex REQ_LINE_REGEX("^(GET|POST|PUT|DELETE) /(\\d+)/(\\d+)\\??""(.*) HTTP/1.1\r\n");
 
 
@@ -168,20 +168,24 @@ void ClientHandler::getItem()
 
 void ClientHandler::addItem()
 {
-    if (!disk_->Get(req_.dir, req_.id, item_, block_)) {
+    if (disk_->Get(req_.dir, req_.id, item_, block_)) {
         req_.state = STATUS_OK;
         return;
     }
 
-    if (req_.args.find("Content-Length") == req_.args.end()) {
+    if (req_.headers.find("Content-Length") == req_.args.end()) {
         req_.error = "NO_CONTENT_LENTH";
         return;
     }
 
-    size_t cl = stoull(req_.args["Content-Length"]);
+    size_t cl = stoull(req_.headers["Content-Length"]);
     if (cl > stoull(get_conf("disk.block.size"))) {
         req_.error = "ITEM_TOO_BIG";
         return;
+    }
+
+    if (req_.args.find("expire") == req_.args.end()) {
+        req_.args["expire"] = "3600";
     }
 
     stringstream buf("HTTP/1.1 200 OK\r\nServer: Hornet\r\n");
@@ -191,19 +195,19 @@ void ClientHandler::addItem()
     buf << "\r\n";
     const string& header = buf.str();
 
-    auto item = shared_ptr<Item>(new Item());
-    item->putting = true;
-    item->expired = stoul(req_.args["expire"]);
-    item->header_size = header.size();
-    item->size = item->header_size + cl;
+    item_ = shared_ptr<Item>(new Item());
+    item_->putting = true;
+    item_->expired = stoul(req_.args["expire"]);
+    item_->header_size = header.size();
+    item_->size = item_->header_size + cl;
 
-    const char* err = parse_tags(req_.args, item->tags);
+    const char* err = parse_tags(req_.args, item_->tags);
     if (err != nullptr) {
         req_.error = err;
         return;
     }
 
-    if (disk_->Add(req_.dir, req_.id, item, block_)) {
+    if (!disk_->Add(req_.dir, req_.id, item_, block_)) {
         req_.error = "ADD_DISK_FAILD";
         return;
     }
@@ -220,6 +224,7 @@ void ClientHandler::addItem()
         return;
     }
 
+    req_.state = STATUS_CREATED;
     phase_ = PH_READ_BODY;
     recv_.processed = req_.header_len;
 }
@@ -295,7 +300,7 @@ void ClientHandler::readHeader(Event* ev, EventEngine* engine)
 
         // headers
         cmatch header_match;
-        for (req_match[0].second; 
+        for (start = req_match[0].second; 
             regex_search(start, header_match, HEADER_REGEX);
             start = header_match[0].second) {
             req_.headers[header_match[1].str()] = header_match[2].str();
@@ -312,7 +317,7 @@ void ClientHandler::readHeader(Event* ev, EventEngine* engine)
         case METHOD_PUT:
         case METHOD_POST:
             addItem();
-            if (req_.error == nullptr) {
+            if (req_.error == nullptr && req_.state == STATUS_CREATED) {
                 ev->write = false;
                 ev->read = true;
             }
