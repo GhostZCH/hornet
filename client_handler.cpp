@@ -15,7 +15,8 @@ pair<int, string> http_status[] = {
 
 unordered_map<int, string> g_http_status(
     http_status,
-    http_status + sizeof(http_status) / sizeof(pair<int, string>));
+    http_status + sizeof(http_status) / sizeof(pair<int, string>)
+);
 
 
 const int METHOD_GET = 1;

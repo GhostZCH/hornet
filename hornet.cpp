@@ -46,15 +46,15 @@ bool Hornet::Start()
 
     int wc = stoi(get_conf("worker.count"));
     for (int i = 0; i < wc; i++) {
-        auto log = unique_ptr<AccessLog>(new AccessLog(get_conf("log.access")));
+        auto log = new AccessLog(get_conf("log.access"));
         if (!log->Init()) {
             return false;
         }
-        access_log_.push_back(log);
+        access_log_.push_back(unique_ptr<AccessLog>(log));
 
         EventEngine* worker = new EventEngine();
         worker->context["disk"] = disk_.get();
-        worker->context["access"] = log.get();
+        worker->context["access"] = log;
 
         if (!worker->AddHandler(accepter) || !accepter->Init(worker)) {
             return false;
