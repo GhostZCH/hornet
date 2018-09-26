@@ -193,7 +193,8 @@ void ClientHandler::addItem()
         req_.args["expire"] = get_conf("item.default_expire");
     }
 
-    stringstream buf("HTTP/1.1 200 OK\r\nServer: Hornet\r\n");
+    stringstream buf;
+    buf << "HTTP/1.1 200 OK\r\nServer: Hornet\r\n";
     for (auto& h: req_.headers) {
         buf << h.first << ": " << h.second << "\r\n";
     }
