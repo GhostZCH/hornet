@@ -38,7 +38,7 @@ unordered_map<string, int> g_http_methods(
     http_methods + sizeof(http_methods) / sizeof(pair<string, int>)
 );
 
-// version time time-cost method uri stat content-len error 
+// version time time-cost method uri stat content-len error svr-ext client-ext
 const char *LOG_FROMART = "%d %llu %llu %s %s %u %lu %s %s %s\n";
 
 const char* RSP_TEMPLATE = "HTTP/1.1 %d %s\r\nContent-Length: 0\r\n\r\n";
@@ -202,7 +202,7 @@ void ClientHandler::addItem()
 
     item_ = shared_ptr<Item>(new Item());
     item_->putting = true;
-    item_->expired = stoul(req_.args["expire"]);
+    item_->expired = g_now + stoul(req_.args["expire"]);
     item_->header_size = header.size();
     item_->size = item_->header_size + cl;
 
@@ -417,13 +417,17 @@ void ClientHandler::finish(Event* ev, EventEngine* engine)
         req_.client_ext = req_.headers["Client-Ext"];
     }
 
-    ssize_t n = snprintf(logger_->Buffer(), ACCESS_LOG_BUF,
-                        LOG_FROMART, VERSION,
-                        g_now, g_now_ms - req_.start,
-                        req_.method_str.c_str(), req_.uri_str.c_str(),
-                        req_.state, req_.content_len,
-                        req_.client_ext.c_str(), req_.server_ext.c_str(),
-                        req_.error == nullptr ? "-": req_.error);
+    ssize_t n = snprintf(
+        logger_->Buffer(), ACCESS_LOG_BUF, LOG_FROMART,
+        VERSION, g_now, g_now_ms - req_.start,
+        req_.method_str.c_str(),
+        req_.uri_str.c_str(),
+        req_.state,
+        req_.content_len,
+        req_.error == nullptr ? "-": req_.error,
+        req_.server_ext.c_str(),
+        req_.client_ext.c_str()
+    );
 
     logger_->Log(logger_->Buffer(), n);
 

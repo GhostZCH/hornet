@@ -40,7 +40,7 @@ bool Hornet::Start()
     short port = stoi(get_conf("master.port"));
     auto accepter = shared_ptr<Handler>(new AcceptHandler(get_conf("master.ip"), port));
     if (accepter->fd < 0) {
-        LOG(LERROR, "listen " << get_conf("master.ip") << ":" << port << "failed");
+        LOG(LERROR, "listen " << get_conf("master.ip") << ":" << port << " failed");
         return false;
     }
 
@@ -71,10 +71,15 @@ bool Hornet::Start()
 
     LOG(LWARN, "start handle requests");
     bool re = Forever();
-    Stop();
+
+    for (auto &w: workers_) {
+        w->Stop();
+    }
+
     for (auto &t: threads_) {
         t.join();
     }
+
     LOG(LWARN, "process exit");
     return re;
 }
@@ -84,9 +89,6 @@ void Hornet::Stop()
 {
     LOG(LWARN, "stop handle requests");
     EventEngine::Stop();
-    for (auto &w: workers_) {
-        w->Stop();
-    }
 }
 
 
