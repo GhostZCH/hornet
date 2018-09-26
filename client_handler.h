@@ -40,6 +40,8 @@ struct Request
     map<string, string> headers;
     string method_str;
     string uri_str;
+    string client_ext;
+    string server_ext;
     const char* error;
 };
 

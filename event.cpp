@@ -133,7 +133,7 @@ bool EventEngine::HandleEpollEvent()
 
 bool EventEngine::HandleTimerEvent()
 {
-    list<int64_t> expired;
+    vector<int64_t> expired;
 
     time_t now = g_now;
     for (auto iter = timers_.begin(); iter->first < now && iter != timers_.end(); iter++) {

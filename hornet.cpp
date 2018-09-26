@@ -69,17 +69,20 @@ bool Hornet::Start()
     // AddHandler(disk);
     // AddTimer(disk->fd, 10);
 
+    LOG(LWARN, "start handle requests");
     bool re = Forever();
     Stop();
     for (auto &t: threads_) {
         t.join();
     }
+    LOG(LWARN, "process exit");
     return re;
 }
 
 
 void Hornet::Stop()
 {
+    LOG(LWARN, "stop handle requests");
     EventEngine::Stop();
     for (auto &w: workers_) {
         w->Stop();
@@ -89,6 +92,7 @@ void Hornet::Stop()
 
 void Hornet::Reopen()
 {
+    LOG(LWARN, "reopen log files");
     for (auto &log: access_log_) {
         log->Reopen();
     }

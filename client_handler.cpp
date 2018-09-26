@@ -39,7 +39,7 @@ unordered_map<string, int> g_http_methods(
 );
 
 // version time time-cost method uri stat content-len error 
-const char *LOG_FROMART = "%d %llu %llu %s %s %u %lu %s\n";
+const char *LOG_FROMART = "%d %llu %llu %s %s %u %lu %s %s %s\n";
 
 const char* RSP_TEMPLATE = "HTTP/1.1 %d %s\r\nContent-Length: 0\r\n\r\n";
 const regex ARG_REGEX("(\\w+)=(\\w+)&?");
@@ -138,13 +138,18 @@ void ClientHandler::reset()
     req_.method = 0;
     req_.header_len = 0;
     req_.write_len = 0;
+    req_.start = 0;
+    req_.content_len = 0;
 
     req_.method_str = "-";
     req_.uri_str = "-";
+    req_.client_ext = "-";
+    req_.server_ext = "-";
+
     req_.error = nullptr;
 
     req_.args.clear();
-    req_.headers.clear();;
+    req_.headers.clear();
 
     item_.reset();
     block_.reset();
@@ -185,7 +190,7 @@ void ClientHandler::addItem()
     }
 
     if (req_.args.find("expire") == req_.args.end()) {
-        req_.args["expire"] = "3600";
+        req_.args["expire"] = get_conf("item.default_expire");
     }
 
     stringstream buf("HTTP/1.1 200 OK\r\nServer: Hornet\r\n");
@@ -240,7 +245,8 @@ void ClientHandler::delItem()
         return;
     }
 
-    disk_->Delete(req_.dir, req_.id, tags);
+    uint32_t n = disk_->Delete(req_.dir, req_.id, tags);
+    req_.server_ext = to_string(n);
 }
 
 
@@ -249,6 +255,8 @@ void ClientHandler::readHeader(Event* ev, EventEngine* engine)
     if (!ev->read) {
         return;
     }
+
+    req_.start = g_now_ms;
 
     if (!read_buf(fd, recv_)) {
         req_.error = "READ_CLIENT_FAILD";
@@ -344,6 +352,7 @@ void ClientHandler::readBody(Event* ev, EventEngine* engine)
 
         if (recv_.size == 0)  {
             if (req_.write_len == item_->size) {
+                item_->putting = false;
                 phase_ = PH_SEND_MEM;
                 ev->read = false;
                 ev->write = true;
@@ -403,11 +412,17 @@ void ClientHandler::finish(Event* ev, EventEngine* engine)
 {
     ev->write = ev->read = ev->timer = false;
 
+    if (req_.headers.find("Client-Ext") != req_.headers.end()
+        && req_.headers["Client-Ext"] != "") {
+        req_.client_ext = req_.headers["Client-Ext"];
+    }
+
     ssize_t n = snprintf(logger_->Buffer(), ACCESS_LOG_BUF,
                         LOG_FROMART, VERSION,
                         g_now, g_now_ms - req_.start,
                         req_.method_str.c_str(), req_.uri_str.c_str(),
                         req_.state, req_.content_len,
+                        req_.client_ext.c_str(), req_.server_ext.c_str(),
                         req_.error == nullptr ? "-": req_.error);
 
     logger_->Log(logger_->Buffer(), n);
