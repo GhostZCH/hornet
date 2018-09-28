@@ -4,6 +4,7 @@
 const int STATUS_OK = 200;
 const int STATUS_CREATED = 201;
 const int STATUS_NOT_FOUND = 404;
+const int STATUS_SERVER_ERROR = 500;
 
 
 pair<int, string> http_status[] = {
@@ -130,7 +131,7 @@ bool ClientHandler::Close(EventEngine* engine)
 
 void ClientHandler::reset()
 {
-    phase_ = PH_READ_HEADER;
+    req_.phase = PH_READ_HEADER;
 
     req_.id = 0;
     req_.dir = 0;
@@ -140,19 +141,21 @@ void ClientHandler::reset()
     req_.write_len = 0;
     req_.start = 0;
     req_.content_len = 0;
+    req_.send_len = 0;
+    req_.recv_ = 0;
 
     req_.method_str = "-";
     req_.uri_str = "-";
     req_.client_ext = "-";
     req_.server_ext = "-";
 
-    req_.error = nullptr;
+    req_.error = "-";
 
     req_.args.clear();
     req_.headers.clear();
 
-    item_.reset();
-    block_.reset();
+    req_.item.reset();
+    req_.block.reset();
 
     send_.size = send_.offset = send_.processed = 0;
     recv_.size = recv_.offset = recv_.processed = 0;
@@ -161,11 +164,11 @@ void ClientHandler::reset()
 
 void ClientHandler::getItem()
 {
-    phase_ = PH_SEND_MEM;
+    req_.phase = PH_SEND_MEM;
     req_.state = STATUS_NOT_FOUND;
 
-    if (disk_->Get(req_.dir, req_.id, item_, block_)) {
-        phase_ = PH_SEND_DISK;
+    if (disk_->Get(req_.dir, req_.id, req_.item, req_.block)) {
+        req_.phase = PH_SEND_DISK;
         req_.state = STATUS_OK;
     }
 }
@@ -173,7 +176,7 @@ void ClientHandler::getItem()
 
 void ClientHandler::addItem()
 {
-    if (disk_->Get(req_.dir, req_.id, item_, block_)) {
+    if (disk_->Get(req_.dir, req_.id, req_.item, req_.block)) {
         req_.state = STATUS_OK;
         return;
     }
@@ -201,37 +204,37 @@ void ClientHandler::addItem()
     buf << "\r\n";
     const string& header = buf.str();
 
-    item_ = shared_ptr<Item>(new Item());
-    item_->putting = true;
-    item_->expired = g_now + stoul(req_.args["expire"]);
-    item_->header_size = header.size();
-    item_->size = item_->header_size + cl;
+    req_.item = shared_ptr<Item>(new Item());
+    req_.item->putting = true;
+    req_.item->expired = g_now + stoul(req_.args["expire"]);
+    req_.item->header_size = header.size();
+    req_.item->size = req_.item->header_size + cl;
 
-    const char* err = parse_tags(req_.args, item_->tags);
+    const char* err = parse_tags(req_.args, req_.item->tags);
     if (err != nullptr) {
         req_.error = err;
         return;
     }
 
-    if (!disk_->Add(req_.dir, req_.id, item_, block_)) {
+    if (!disk_->Add(req_.dir, req_.id, req_.item, req_.block)) {
         req_.error = "ADD_DISK_FAILD";
         return;
     }
 
-    if (!block_->Wirte(item_.get(), header.c_str(), header.size(), 0)) {
+    if (!req_.block->Wirte(req_.item.get(), header.c_str(), header.size(), 0)) {
         req_.error = "WRITE_FAILD";
         return;
     }
     
-    req_.write_len = item_->header_size;
-    if (!block_->Wirte(item_.get(), recv_.data.get() + req_.header_len,
+    req_.write_len = req_.item->header_size;
+    if (!req_.block->Wirte(req_.item.get(), recv_.data.get() + req_.header_len,
                        recv_.size - req_.header_len, req_.write_len)) {
         req_.error = "WRITE_FAILD";
         return;
     }
 
     req_.state = STATUS_CREATED;
-    phase_ = PH_READ_BODY;
+    req_.phase = PH_READ_BODY;
     recv_.processed = req_.header_len;
 }
 
@@ -251,18 +254,19 @@ void ClientHandler::delItem()
 }
 
 
+
 void ClientHandler::readHeader(Event* ev, EventEngine* engine)
 {
     if (!ev->read) {
         return;
     }
 
-    req_.start = g_now_ms;
-
     if (!read_buf(fd, recv_)) {
         req_.error = "READ_CLIENT_FAILD";
-        return;
     }
+
+    req_.start = g_now_ms;
+    req_.recv_len += recv_.size;
 
     char *start = recv_.data.get() + recv_.processed;
     char *end = (char *)memmem(start, recv_.size - recv_.processed, "\r\n\r\n", 4);
@@ -277,7 +281,7 @@ void ClientHandler::readHeader(Event* ev, EventEngine* engine)
         return;
     }
 
-    phase_ = PH_SEND_MEM;
+    req_.phase = PH_SEND_MEM;
     req_.header_len = end - recv_.data.get() + 4;
 
     cmatch req_match;
@@ -295,25 +299,26 @@ void ClientHandler::readHeader(Event* ev, EventEngine* engine)
     req_.dir = stoull(req_match[2].str());
     req_.id = stoull(req_match[3].str());
 
-    if (req_.method != METHOD_GET) {
-        const char* start;
-        // args
-        if (req_match.size() == 5 && req_match[4].length() != 0) {
-            cmatch arg_match;
-            for (start = req_match[4].first;
-                regex_search(start, arg_match, ARG_REGEX);
-                start = arg_match[0].second) {
-                req_.args[arg_match[1].str()] = arg_match[2].str();
-            }
-        }
 
-        // headers
-        cmatch header_match;
-        for (start = req_match[0].second; 
-            regex_search(start, header_match, HEADER_REGEX);
-            start = header_match[0].second) {
-            req_.headers[header_match[1].str()] = header_match[2].str();
+    // TODO: use a function
+    const char* tmpstart;
+
+    // args
+    if (req_match.size() == 5 && req_match[4].length() != 0) {
+        cmatch arg_match;
+        for (tmpstart = req_match[4].first;
+            regex_search(tmpstart, arg_match, ARG_REGEX);
+            tmpstart = arg_match[0].second) {
+            req_.args[arg_match[1].str()] = arg_match[2].str();
         }
+    }
+
+    // headers
+    cmatch header_match;
+    for (tmpstart = req_match[0].second; 
+        regex_search(tmpstart, header_match, HEADER_REGEX);
+        tmpstart = header_match[0].second) {
+        req_.headers[header_match[1].str()] = header_match[2].str();
     }
 
     ev->read = false;
@@ -345,16 +350,17 @@ void ClientHandler::readBody(Event* ev, EventEngine* engine)
     }
 
     while (read_buf(fd, recv_)) {
-        if (!block_->Wirte(item_.get(), recv_.data.get() + recv_.processed,
+        req_.recv_len += recv_.size;
+        if (!req_.block->Wirte(req_.item.get(), recv_.data.get() + recv_.processed,
                         recv_.size - recv_.processed, req_.write_len)) {
             req_.error = "WRITE_FAILD";
             return;
         }
 
         if (recv_.size == 0)  {
-            if (req_.write_len == item_->size) {
-                item_->putting = false;
-                phase_ = PH_SEND_MEM;
+            if (req_.write_len == req_.item->size) {
+                req_.item->putting = false;
+                req_.phase = PH_SEND_MEM;
                 ev->read = false;
                 ev->write = true;
             }
@@ -375,19 +381,24 @@ void ClientHandler::sendMem(Event* ev, EventEngine* engine)
         return;
     }
 
+    // 应该不属于这个函数
     if (send_.size == 0) {
-        send_.size = snprintf(send_.data.get(), send_.capcity, RSP_TEMPLATE,
-                              req_.state, g_http_status[req_.state].c_str());
+        send_.size = snprintf(
+            send_.data.get(), send_.capcity, RSP_TEMPLATE,
+            req_.state, g_http_status[req_.state].c_str()
+        );
     }
 
     if (!send_buf(fd, send_)){
         req_.error = "SEND_CLIENT_FAILD";
         return;
     }
+
+    req_.write_len = send_.offset;
     ev->read = ev->write = ev->error = false;
 
     if (send_.offset == send_.size) {
-        phase_ = PH_FINISH;
+        req_.phase = PH_FINISH;
     }
 }
 
@@ -398,13 +409,13 @@ void ClientHandler::sendDisk(Event* ev, EventEngine* engine)
         return;
     }
 
-    if (!block_->Send(item_.get(), fd, req_.write_len)) {
+    if (!req_.block->Send(req_.item.get(), fd, req_.write_len)) {
         req_.error = "SEND_CLIENT_FAILD";
         return;
     }
 
-    if (req_.write_len == item_->size) {
-        phase_ = PH_FINISH;
+    if (req_.write_len == req_.item->size) {
+        req_.phase = PH_FINISH;
     }
 }
 
@@ -412,6 +423,11 @@ void ClientHandler::sendDisk(Event* ev, EventEngine* engine)
 void ClientHandler::finish(Event* ev, EventEngine* engine)
 {
     ev->write = ev->read = ev->timer = false;
+
+    if (recv_.size == 0 && req_.error != nullptr) {
+        // client close connection after a transport
+        return;
+    }
 
     if (req_.headers.find("Client-Ext") != req_.headers.end()
         && req_.headers["Client-Ext"] != "") {
@@ -466,10 +482,14 @@ bool ClientHandler::Handle(Event* ev, EventEngine* engine)
         timeout(ev, engine);
 
         if (req_.error) {
-            phase_ = PH_FINISH;
+            req_.phase = PH_FINISH;
         }
 
-        switch (phase_) {
+        switch (req_.phase) {
+            case PH_IDLE:
+                idle(ev, engine);
+                break;
+
             case PH_READ_HEADER:
                 readHeader(ev, engine);
                 break;
@@ -478,7 +498,7 @@ bool ClientHandler::Handle(Event* ev, EventEngine* engine)
                 readBody(ev, engine);
                 break;
 
-            case PH_SEND_MEM: 
+            case PH_SEND_MEM:
                 sendMem(ev, engine);
                 break;
 
@@ -491,7 +511,7 @@ bool ClientHandler::Handle(Event* ev, EventEngine* engine)
                 break;
 
             default:
-                LOG(LERROR, "unknown phase " << phase_);
+                LOG(LERROR, "unknown phase " << req_.phase);
                 return false;
         }
     }

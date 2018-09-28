@@ -28,21 +28,31 @@ struct Buffer
 
 struct Request
 {
-    int method;
+    int method_code;
+    Phase phase;
+    time_t start;
+
     size_t id;
     size_t dir;
-    time_t start;
+
     uint16_t state;
     uint32_t header_len;
     uint32_t write_len;
     uint32_t content_len;
-    map<string, string> args;
-    map<string, string> headers;
-    string method_str;
-    string uri_str;
+    uint32_t recv_len;
+    uint32_t send_len;
+
+    string method;
+    string uri;
+    string error;
     string client_ext;
     string server_ext;
-    const char* error;
+
+    shared_ptr<Item> item;
+    shared_ptr<Block> block;
+
+    map<string, string> args;
+    map<string, string> headers;
 };
 
 
@@ -57,6 +67,7 @@ public:
     bool Handle(Event* ev, EventEngine* engine);
 
 private:
+    void idle(Event* ev, EventEngine* engine);
     void readHeader(Event* ev, EventEngine* engine);
     void readBody(Event* ev, EventEngine* engine);
     void sendMem(Event* ev, EventEngine* engine);
@@ -71,8 +82,6 @@ private:
 
     void reset();
 
-    Phase phase_{PH_READ_HEADER};
-
     Buffer recv_;
     Buffer send_;
     Request req_;
@@ -80,6 +89,4 @@ private:
 
     Disk* disk_;
     AccessLog* logger_;
-    shared_ptr<Item> item_;
-    shared_ptr<Block> block_;
 };
