@@ -9,9 +9,6 @@ class Block
 public:
     Block(int fd, string& name):fd_(fd),name_(name){};
     ~Block(){close(fd_);unlink(name_.c_str());}
-    bool Wirte(Item *item, const char* buf, uint32_t len, off_t off);
-    bool Read(Item *item, char* buf);
-    bool Send(Item *item, int sock, uint32_t& off);
 
 private:
     int fd_;

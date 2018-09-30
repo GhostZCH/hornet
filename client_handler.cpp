@@ -1,110 +1,10 @@
 #include "client_handler.h"
 
 
-const int STATUS_OK = 200;
-const int STATUS_CREATED = 201;
-const int STATUS_NOT_FOUND = 404;
-const int STATUS_SERVER_ERROR = 500;
-
-
-pair<int, string> http_status[] = {
-    {STATUS_OK, "OK"},
-    {STATUS_CREATED, "Created"},
-    {STATUS_NOT_FOUND, "Not Found"},
-};
-
-
-unordered_map<int, string> g_http_status(
-    http_status,
-    http_status + sizeof(http_status) / sizeof(pair<int, string>)
-);
-
-
-const int METHOD_GET = 1;
-const int METHOD_PUT = 2;
-const int METHOD_POST = 3;
-const int METHOD_DELETE = 4;
-
-
-pair<string, int> http_methods[] = {
-    {"GET", METHOD_GET},
-    {"PUT", METHOD_PUT},
-    {"POST", METHOD_POST},
-    {"DELETE", METHOD_DELETE},
-};
-
-
-unordered_map<string, int> g_http_methods(
-    http_methods,
-    http_methods + sizeof(http_methods) / sizeof(pair<string, int>)
-);
-
-// version time time-cost method uri stat content-len error svr-ext client-ext
-const char *LOG_FROMART = "%d %llu %llu %s %s %u %lu %s %s %s\n";
-
-const char* RSP_TEMPLATE = "HTTP/1.1 %d %s\r\nContent-Length: 0\r\n\r\n";
-const regex ARG_REGEX("(\\w+)=(\\w+)&?");
-const regex HEADER_REGEX("(.+): (.+)\r\n");
-const regex REQ_LINE_REGEX("^(GET|POST|PUT|DELETE) /(\\d+)/(\\d+)\\??""(.*) HTTP/1.1\r\n");
-
-
-const char* parse_tags(const map<string, string>& args, uint16_t* tags)
-{
-    for (int i = 0; i < TAG_LIMIT; i++) {
-        tags[i] = 0;
-        auto iter = args.find("tag" + to_string(i));
-        if (iter != args.end()) {
-            int temp = stoi(iter->second);
-            if (temp < 0 || temp > 65534) {
-                return "tags not in range [0, 65534]";
-            }
-            tags[i] = temp;
-        }
-    }
-    return nullptr;
-}
-
-
-bool read_buf(int fd, Buffer& buf)
-{
-    while(buf.size < buf.capcity) {
-        int n = read(fd, buf.data.get() + buf.size, buf.capcity - buf.size);
-        if (n > 0) {
-            buf.size += n;
-        } else {
-            return n < 0 && errno == EAGAIN;
-        }
-    }
-    return true;
-}
-
-
-bool send_buf(int fd, Buffer& buf)
-{
-    while(buf.offset < buf.size) {
-        int n = write(fd, buf.data.get() + buf.offset, buf.size - buf.offset);
-        if (n > 0) {
-            buf.offset += n;
-        } else {
-            return n < 0 && errno == EAGAIN;
-        }
-    }
-    return true;
-}
-
-
-
 ClientHandler::ClientHandler()
     :Handler()
 {
     timeout_ = 0;
-
-    send_.capcity = stoull(get_conf("request.send_buf"));
-    recv_.capcity = stoull(get_conf("request.recv_buf"));
-    send_.data = unique_ptr<char []>(new char[send_.capcity]);
-    recv_.data = unique_ptr<char []>(new char[recv_.capcity]);
-
-    reset();
 }
 
 
@@ -126,39 +26,6 @@ bool ClientHandler::Close(EventEngine* engine)
     }
 
     return engine->DelEpollEvent(fd) && engine->DelHandler(fd);
-}
-
-
-void ClientHandler::reset()
-{
-    req_.phase = PH_READ_HEADER;
-
-    req_.id = 0;
-    req_.dir = 0;
-    req_.state = 0;
-    req_.method = 0;
-    req_.header_len = 0;
-    req_.write_len = 0;
-    req_.start = 0;
-    req_.content_len = 0;
-    req_.send_len = 0;
-    req_.recv_ = 0;
-
-    req_.method_str = "-";
-    req_.uri_str = "-";
-    req_.client_ext = "-";
-    req_.server_ext = "-";
-
-    req_.error = "-";
-
-    req_.args.clear();
-    req_.headers.clear();
-
-    req_.item.reset();
-    req_.block.reset();
-
-    send_.size = send_.offset = send_.processed = 0;
-    recv_.size = recv_.offset = recv_.processed = 0;
 }
 
 
@@ -304,7 +171,7 @@ void ClientHandler::readHeader(Event* ev, EventEngine* engine)
     const char* tmpstart;
 
     // args
-    if (req_match.size() == 5 && req_match[4].length() != 0) {
+    if (req_match[4].length() != 0) {
         cmatch arg_match;
         for (tmpstart = req_match[4].first;
             regex_search(tmpstart, arg_match, ARG_REGEX);
