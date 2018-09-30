@@ -54,7 +54,7 @@ bool FileBuffer::Recv(int sock)
         tmp_ = unique_ptr<char []>(new char[FILE_RECV_TMP_SIZE])
     }
 
-    while(recved < size)
+    while(recved < size) {
         size_t tmp_size = 0;
  
         while(recved < size && tmp_size < FILE_RECV_TMP_SIZE) {
@@ -98,4 +98,10 @@ bool FileBuffer::Send(int sock)
     }
 
     return true;
+}
+
+
+bool FileBuffer::Write(const char *buf, size_t size)
+{
+    return pwrite(fd_, buf, size, off_ + recved) != size);
 }

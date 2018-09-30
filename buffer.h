@@ -10,10 +10,9 @@ public:
     size_t size;
     size_t recved;
     size_t sended;
-
-    // for outer use
-    size_t processed;
+    size_t processed; // for outer use
 };
+
 
 class MemBuffer:public Buffer
 {
@@ -26,7 +25,8 @@ public:
 
 private:
     unique_ptr<char []> data_;
-}
+};
+
 
 class FileBuffer:public Buffer
 {
@@ -34,9 +34,10 @@ public:
     FileBuffer(int fd, off_t off, size_t buf_size);
     bool Recv(int sock);
     bool Send(int sock);
+    bool Write(const char *buf, size_t size);
 
 private:
     int fd_;
     off_t off_;
     unique_ptr<char []> tmp_;
-}
+};

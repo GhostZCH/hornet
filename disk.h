@@ -10,6 +10,8 @@ public:
     Block(int fd, string& name):fd_(fd),name_(name){};
     ~Block(){close(fd_);unlink(name_.c_str());}
 
+    int Fd(){return fd_;}
+
 private:
     int fd_;
     string name_;

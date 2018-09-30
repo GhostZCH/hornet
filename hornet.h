@@ -50,4 +50,3 @@ const size_t BLOCK_SIZE = 128 * 1024 * 1024;
 const size_t ITEM_LIMIT = BLOCK_SIZE;
 
 const int DISK_FD = -1; // fake fd for disk handler
-

@@ -13,7 +13,7 @@ const int STATUS_NOT_FOUND = 404;
 const int STATUS_SERVER_ERROR = 500;
 
 
-enum Phase
+enum ReqPhase
 {
     PH_READ_HEADER,
     PH_READ_BODY,
@@ -29,7 +29,7 @@ public:
     Request(int fd, Disk *d, AccessLog* log);
     ~Request();
 
-    Phase Phase(){return phase_;}
+    ReqPhase Phase(){return phase_;}
 
     bool ReadHeader();
     bool ReadBody();
@@ -40,9 +40,9 @@ public:
     bool Finish();
 
 private:
-    bool parseReqLine();
-    bool parseHeaders();
-    bool parseArgs();
+    bool parseReqLine(const char* &args, const char* &headers);
+    bool parseHeaders(const char* headers);
+    bool parseArgs(const char* args);
     bool parseTags(uint16_t tags[]);
     bool log();
 
@@ -55,7 +55,7 @@ private:
     Disk* disk_;
     AccessLog* log_;
 
-    Phase phase_;
+    ReqPhase phase_;
     time_t start_;
 
     size_t id_;
