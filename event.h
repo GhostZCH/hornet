@@ -26,10 +26,10 @@ class Handler
 public:
     virtual ~Handler(){if (fd > 0) {close(fd);}}
 
-    virtual bool Init(EventEngine* engine) = 0;
-    virtual bool Close(EventEngine* engine) = 0;
+    virtual void Init(EventEngine* engine) = 0;
+    virtual void Close(EventEngine* engine) = 0;
 
-    virtual bool Handle(Event* ev, EventEngine* engine) = 0;
+    virtual void Handle(Event* ev, EventEngine* engine) = 0;
 
     int fd{-1};
 };
@@ -40,24 +40,23 @@ class EventEngine
 public:
     EventEngine(int connection_limit=10240);
 
-    bool Forever();
+    void Forever();
     virtual void Stop();
 
-    bool AddHandler(shared_ptr<Handler>& h);
-    bool DelHandler(int fd);
+    void AddHandler(shared_ptr<Handler>& h);
+    void DelHandler(int fd);
 
-    bool AddEpollEvent(int fd, int flag=EPOLLIN|EPOLLOUT|EPOLLET|EPOLLHUP|EPOLLERR);
-    bool DelEpollEvent(int fd);
+    void AddEpollEvent(int fd, int flag=EPOLLIN|EPOLLOUT|EPOLLET|EPOLLHUP|EPOLLERR);
+    void DelEpollEvent(int fd);
 
-    bool AddTimer(int fd, time_t timeout, int id=0);
-    bool DelTimer(int fd, time_t timeout, int id=0);
+    void AddTimer(int fd, time_t timeout, int id=0);
+    void DelTimer(int fd, time_t timeout, int id=0);
 
-    mutex run_lock;
     map<string, void*> context;
 
 protected:
-    bool HandleEpollEvent();
-    bool HandleTimerEvent();
+    void HandleEpollEvent();
+    void HandleTimerEvent();
 
     bool run_;
 

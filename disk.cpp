@@ -2,35 +2,6 @@
 #include <sys/sendfile.h>
 
 
-bool Block::Wirte(Item *item, const char* buf, uint32_t len, off_t off)
-{
-    ssize_t n = pwrite(fd_, buf, len, item->pos + off);
-    return n == len;
-}
-
-
-bool Block::Read(Item *item, char* buf)
-{
-    ssize_t n = pread(fd_, buf, item->size, item->pos);
-    return n == (ssize_t)item->size;
-}
-
-
-bool Block::Send(Item *item, int sock, uint32_t& off)
-{
-    while (off < item->size){
-        off_t start = off + item->pos;
-        ssize_t n = sendfile(sock, fd_, &start, item->size - off);
-        if (n > 0) {
-            off += n;
-        } else {
-            return n < 0 && errno == EAGAIN;
-        }
-    }
-    return true;
-}
-
-
 Disk::Disk(const string& path, const uint32_t block_count, const size_t block_size)
 {
     path_ = path;
@@ -97,26 +68,26 @@ Disk::~Disk()
 }
 
 
-bool Disk::Init()
+void Disk::Init()
 {
     string meta_file = path_ + "meta";
 
     if (access(meta_file.c_str(), F_OK) == -1) {
-        return true;
+        return;
     }
 
     int meta_fd = open(meta_file.c_str(), O_RDWR);
     if (meta_fd < 0) {
-        return false;
+        throw SvrError("can not open meta " + meta_file, __FILE__, __LINE__);
     }
 
     if (unlink(meta_file.c_str()) < 0) {
-        return false;
+        throw SvrError("can not unlink meta " + meta_file, __FILE__, __LINE__);
     }
 
     MetaHeader header;
     if (read(meta_fd, &header, sizeof(header)) < (ssize_t)sizeof(header)) {
-        return false;
+        throw SvrError("read meta header fail " + meta_file, __FILE__, __LINE__);
     }
 
     for (uint32_t i = header.block_start; i <= header.block_end; i++) {
@@ -137,7 +108,7 @@ bool Disk::Init()
         DiskItem ditem;
 
         if (read(meta_fd, &ditem, sizeof(ditem)) < (ssize_t)sizeof(ditem)) {
-            return false;
+            throw SvrError("read item fail " + meta_file, __FILE__, __LINE__);
         }
 
         if (blocks_.find(ditem.block) == blocks_.end()) {
@@ -147,18 +118,18 @@ bool Disk::Init()
         meta_[ditem.dir][ditem.id] = shared_ptr<Item>(to_item(ditem));
     }
 
-    return close(meta_fd) >= 0;
+    if (close(meta_fd) != 0) {
+        throw SvrError("close meta fail " + meta_file, __FILE__, __LINE__);
+    }
 }
 
 
-bool Disk::Add(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block)
+void Disk::Add(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block)
 {
     unique_lock<mutex> lock(meta_mutex_);
 
     if (blocks_.size() == 0 || (item->size + current_pos_) > block_size_ ) {
-        if (!addBlock()) {
-            return false;
-        }
+        addBlock();
     }
 
     item->pos = current_pos_;
@@ -167,8 +138,6 @@ bool Disk::Add(const size_t dir, const size_t id, shared_ptr<Item>& item, shared
 
     block = blocks_[item->block];
     meta_[dir][id] = item;
-
-    return true;
 }
 
 
@@ -235,7 +204,7 @@ uint32_t Disk::Delete(const size_t dir, const size_t id, const uint16_t tags[])
 }
 
 
-bool Disk::addBlock()
+void Disk::addBlock()
 {
     current_pos_ = 0;
 
@@ -264,9 +233,8 @@ bool Disk::addBlock()
 
     int fd = open(name.c_str(), O_RDWR|O_CREAT, S_IRUSR|S_IWUSR);
     if (fd < 0) {
-        return false;
+        throw SvrError("open block file orror", __FILE__, __LINE__);
     }
 
     blocks_[current_block_] = shared_ptr<Block>(new Block(fd, name));
-    return true;
 }

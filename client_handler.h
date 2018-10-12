@@ -13,10 +13,10 @@ class ClientHandler:public Handler
 public:
     ClientHandler();
 
-    bool Init(EventEngine* engine);
-    bool Close(EventEngine* engine);
+    void Init(EventEngine* engine);
+    void Close(EventEngine* engine);
 
-    bool Handle(Event* ev, EventEngine* engine);
+    void Handle(Event* ev, EventEngine* engine);
 
 private:
     time_t timeout_;

@@ -54,7 +54,8 @@ bool Request::ReadHeader()
 {
     if (!recv_->Recv(fd_)) {
         error_ = "READ-ERROR";
-        return false;
+        phase_ = PH_FINISH;
+        return true;
     }
 
     auto recv = dynamic_cast<MemBuffer *>(recv_.get());
@@ -82,7 +83,7 @@ bool Request::ReadHeader()
     if (method_ == "POST") {
         return addItem();
     }
-    
+
     return delItem();
 }
 
@@ -102,6 +103,14 @@ bool Request::SendResponse()
 bool Request::SendCache()
 {
 
+}
+
+
+bool Request::setError(const string& err)
+{
+    error_ = err;
+    phase_ = PH_FINISH;
+    return true;
 }
 
 
@@ -129,23 +138,20 @@ bool Request::Finish()
         client_ext_.c_str()
     );
 
-    return log_->Log(log_->Buffer(), n);
+    log_->Log(log_->Buffer(), n);
+    return false;
 }
 
 
-bool Request::Timeout()
+void Request::Timeout()
 {
-    error_ = "TIME-OUT";
-    phase_ = PH_FINISH;
-    return true;
+    setError("TIME-OUT");
 }
 
 
-bool Request::Error()
+void Request::Error()
 {
-    error_ = "CONNECTION-ERR";
-    phase_ = PH_FINISH;
-    return true;
+    setError("CONNECTION-ERR");
 }
 
 
@@ -233,7 +239,7 @@ bool Request::getItem()
 }
 
 
-bool Request::addItem()
+void Request::addItem()
 {
     shared_ptr<Item> item;
     shared_ptr<Block> block;
@@ -245,14 +251,12 @@ bool Request::addItem()
     }
 
     if (headers_.find("Content-Length") == headers_.end()) {
-        error_ = "NO_CONTENT_LENTH";
-        return false;
+        return setError("NO_CONTENT_LENTH");
     }
 
     size_t cl = stoull(headers_["Content-Length"]);
     if (cl > stoull(get_conf("disk.block.size"))) {
-        error_ = "ITEM_TOO_BIG";
-        return false;
+        return setError("ITEM_TOO_BIG");
     }
 
     if (headers_.find("expire") == headers_.end()) {
@@ -273,25 +277,15 @@ bool Request::addItem()
     item->header_size = header.size();
     item->size = item->header_size + cl;
 
-    if (!parseTags(item->tags)) {
-        return false;
-    }
-
-    if (!disk_->Add(dir_, id_, item, block)) {
-        error_ = "ADD_DISK_FAILD";
-        return false;
-    }
+    parseTags(item->tags);
+    disk_->Add(dir_, id_, item, block));
 
     auto file = new FileBuffer(block->Fd(), item->pos, item->size);
     auto mem = dynamic_cast<MemBuffer*>(recv_.get());
 
     // write headers and remain body
-    if (!file->Write(header.c_str(), header.size())
-        || !file->Write(mem->Get() + header_len_, mem->recved - header_len_)) {
-        error_ = "WRITE_FAILD";
-        delete file;
-        return false;
-    }
+    file->Write(header.c_str(), header.size());
+    file->Write(mem->Get() + header_len_, mem->recved - header_len_);
 
     // relead membuf, set filebuf
     recv_.reset();

@@ -35,8 +35,8 @@ public:
     bool ReadBody();
     bool SendResponse();
     bool SendCache();
-    bool Timeout();
-    bool Error();
+    void Timeout();
+    void Error();
     bool Finish();
 
 private:
@@ -49,6 +49,8 @@ private:
     bool getItem();
     bool addItem();
     bool delItem();
+
+    bool setError(const string& err);
 
 private:
     int fd_;

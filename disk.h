@@ -33,14 +33,13 @@ public:
     Disk(const string& path, const uint32_t block_count, const size_t block_size);
     ~Disk();
 
-    bool Init();
-
-    bool Add(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block);
+    void Init();
+    void Add(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block);
     bool Get(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block);
     uint32_t Delete(const size_t dir, const size_t id, const uint16_t tags[]);
 
 private:
-    bool addBlock();
+    void addBlock();
 
 private:
     string path_;

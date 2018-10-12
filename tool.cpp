@@ -57,7 +57,7 @@ void print_help(const map<string, pair<string, string>>& params)
 }
 
 
-bool get_param(int argc, char *argv[], map<string, pair<string, string>>& params)
+void get_param(int argc, char *argv[], map<string, pair<string, string>>& params)
 {
     string key;
 
@@ -66,7 +66,7 @@ bool get_param(int argc, char *argv[], map<string, pair<string, string>>& params
             key = argv[i][1];
             if (params.find(key) == params.end()) {
                 print_help(params);
-                return false;
+                throw SvrError("param error", __FILE__, __LINE__);
             }
 
         } else if (key.size() > 0) {
@@ -75,15 +75,13 @@ bool get_param(int argc, char *argv[], map<string, pair<string, string>>& params
 
         } else {
             print_help(params);
-            return false;
+            throw SvrError("param error", __FILE__, __LINE__);
         }
     }
-
-    return true;
 }
 
 
-bool load_conf(string filename)
+void load_conf(string filename)
 {
     string line;
     smatch match;
@@ -91,7 +89,7 @@ bool load_conf(string filename)
 
     ifstream conf_file(filename);
     if (!conf_file.is_open()) {
-        return false;
+        throw SvrError("open conf file failed", __FILE__, __LINE__);
     }
 
     while (getline(conf_file, line)) {
@@ -99,8 +97,6 @@ bool load_conf(string filename)
             g_config[match[1]] = match[2];
         }
     }
-
-    return true;
 }
 
 

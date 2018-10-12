@@ -12,7 +12,7 @@ const int VERSION = 10000;
 class Hornet: public EventEngine
 {
 public:
-    bool Start();
+    void Start();
     void Stop();
     void Reopen();
 
@@ -24,7 +24,7 @@ private:
 };
 
 
-bool Hornet::Start()
+void Hornet::Start()
 {
     disk_ = unique_ptr<Disk>(new Disk(
         get_conf("disk.path"),
@@ -32,35 +32,28 @@ bool Hornet::Start()
         stoll(get_conf("disk.block.size"))
     ));
 
-    if (!disk_->Init()) {
-        LOG(LERROR, "disk init failed");
-        return false;
-    }
+    disk_->Init();
 
     short port = stoi(get_conf("master.port"));
     auto accepter = shared_ptr<Handler>(new AcceptHandler(get_conf("master.ip"), port));
     if (accepter->fd < 0) {
-        LOG(LERROR, "listen " << get_conf("master.ip") << ":" << port << " failed");
-        return false;
+        string err = "can not listen " + get_conf("master.ip") + ":" + to_string(port);
+        throw SvrError(err, __FILE__, __LINE__);
     }
 
     int wc = stoi(get_conf("worker.count"));
     for (int i = 0; i < wc; i++) {
-        auto log = new AccessLog(get_conf("log.access"));
-        if (!log->Init()) {
-            return false;
-        }
-        access_log_.push_back(unique_ptr<AccessLog>(log));
+        access_log_.push_back(unique_ptr<AccessLog>(new AccessLog(get_conf("log.access"))));
+        auto log = access_log_[access_log_.size() - 1].get();
+        log->Init();
 
-        EventEngine* worker = new EventEngine();
+        workers_.push_back(unique_ptr<EventEngine>(new EventEngine()));
+        auto worker = workers_[workers_.size() - 1].get();
         worker->context["disk"] = disk_.get();
         worker->context["access"] = log;
-
-        if (!worker->AddHandler(accepter) || !accepter->Init(worker)) {
-            return false;
-        }
-
-        workers_.push_back(unique_ptr<EventEngine>(worker));
+        worker->AddHandler(accepter);
+        accepter->Init(worker);
+        
         threads_.push_back(thread([worker]()->void{worker->Forever();}));
     }
 
@@ -70,7 +63,7 @@ bool Hornet::Start()
     // AddTimer(disk->fd, 10);
 
     LOG(LWARN, "start handle requests");
-    bool re = Forever();
+    Forever();
 
     for (auto &w: workers_) {
         w->Stop();
@@ -81,7 +74,6 @@ bool Hornet::Start()
     }
 
     LOG(LWARN, "process exit");
-    return re;
 }
 
 
@@ -126,19 +118,12 @@ int main(int argc, char* argv[])
 
         map<string, pair<string, string>> params;
         params["c"] = make_pair<string, string>("config file of hornet", "hornet.conf");
-        if (!get_param(argc, argv, params)) {
-            return 1;
-        }
-
-        if (!load_conf(params["c"].second)) {
-            LOG(LERROR, "load_conf failed");
-            return 1;
-        }
+        get_param(argc, argv, params);
+        load_conf(params["c"].second);
 
         ofstream errlog = ofstream(get_conf("log.error"), ios_base::app);
         if (!errlog.is_open() || !set_logger(get_conf("log.level"), &errlog)) {
-            LOG(LERROR, "open errlog failed");
-            return 1;
+            throw SvrError("open errlog failed", __FILE__, __LINE__);
         }
 
         server = unique_ptr<Hornet>(new Hornet());
@@ -146,15 +131,16 @@ int main(int argc, char* argv[])
         if (signal(SIGTERM, signal_handler) == SIG_ERR 
             || signal(SIGINT, signal_handler) == SIG_ERR
             || signal(SIGUSR1, signal_handler) == SIG_ERR) {
-            LOG(LERROR, "setup signal failed");
-            return 1;
+            throw SvrError("add signal failed", __FILE__, __LINE__);
         }
 
-        return server->Start() ? 0 : 1;
-
-    } catch (const exception & exc) {
-
+        server->Start();
+        return 0;
+    } catch (SvrError & exc) {
+        LOG(LERROR, exc);
+    } catch (exception & exc) {
         LOG(LERROR, exc.what());
-        return 1;
-    }
+    } 
+
+    return 1;
 }
