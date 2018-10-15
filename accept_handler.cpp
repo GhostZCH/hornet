@@ -14,38 +14,36 @@ AcceptHandler::AcceptHandler(const string& ip, short port)
     addr.sin_addr.s_addr = inet_addr(ip_.c_str());
 
     fd = socket(AF_INET, SOCK_STREAM|SOCK_NONBLOCK, 0);
-    if (fd < 0) {
-        return;
-    }
-
-    if (bind(fd, (struct sockaddr *)&addr, ADDR_SIZE) < 0 || listen(fd, 4096) < 0) {
-        close(fd);
-        fd = -1;
+    if (fd < 0 || bind(fd, (struct sockaddr *)&addr, ADDR_SIZE) < 0 || listen(fd, 4096) < 0) {
+        if (fd > 0) {
+            close(fd);
+        }
+        throw SvrError("AcceptHandler Handle failed: fd=" + to_string(fd), __FILE__, __LINE__);
     }
 }
 
 
-bool AcceptHandler::Init(EventEngine *engine)
+void AcceptHandler::Init(EventEngine *engine)
 {
-    return engine->AddTimer(fd, 0, 0);
+    engine->AddTimer(fd, 0, 0);
 }
 
 
-bool AcceptHandler::Close(EventEngine *engine)
+void AcceptHandler::Close(EventEngine *engine)
 {
-    return engine->DelEpollEvent(fd);
+    engine->DelEpollEvent(fd);
 }
 
 
-bool AcceptHandler::Handle(Event* ev, EventEngine* engine)
+void AcceptHandler::Handle(Event* ev, EventEngine* engine)
 {
     if (ev->error) {
-        return false;
+        throw SvrError("AcceptHandler Handle failed", __FILE__, __LINE__);
     }
 
     unique_lock<mutex> ulock(accept_lock_, try_to_lock);
     if (!ulock) {
-        return true;
+        return;
     }
 
     int cfd;
@@ -56,11 +54,10 @@ bool AcceptHandler::Handle(Event* ev, EventEngine* engine)
         ClientHandler* client = new ClientHandler();
         client->fd = cfd;
 
-        if (!client->Init(engine)) {
-            LOG(LERROR, "client " << cfd << "init failed");
-            return false;
-        }
+        client->Init(engine);
     }
 
-    return errno == EAGAIN;
+    if (errno != EAGAIN) {
+        throw SvrError("AcceptHandler Handle failed", __FILE__, __LINE__);
+    }
 }

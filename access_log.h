@@ -9,15 +9,13 @@ public:
     AccessLog(string& path);
     ~AccessLog(){if(fd_ > 0){close(fd_);}};
 
-    bool Init();
-    bool Log(char* buf, ssize_t n);
+    void Init();
+    void Log(char* buf, ssize_t n);
     void Reopen();
 
     char* Buffer(){return buffer_.get();};
 
 private:
-    bool openFile();
-
     int fd_;
     bool need_reopen_;
     string path_;

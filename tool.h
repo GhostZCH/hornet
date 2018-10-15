@@ -30,37 +30,33 @@ string& get_conf(const string& name);
 void get_param(int argc, char *argv[], map<string, pair<string, string>>& params);
 
 
-class Error {
+class SvrError {
 public:
-    Error(const string& msg, const char* file, int line) {
+    SvrError(const string& msg, const char* file, int line) {
         msg_ = msg;
         file_ = file;
         line_ = line;
+        errno_ = errno;
     }
 
-    friend ostream& operator << (ostream& out,const Error& err) {
-        out << err.file_ << "[" << err.line_ << "]: " << err.msg_;
+    friend ostream& operator << (ostream& out,const SvrError& err) {
+        out << err.file_ << "[" << err.line_ << "]: (" << errno_ << ")" << err.msg_;
         return out;
     }
 
 private:
+    int errno_;
     int line_;
     string msg_;
     const char* file_;
 };
 
 
-class SvrError: public Error
+class ReqError
 {
 public:
-    SvrError(const string& msg, const char* file, int line)
-        :Error(msg, file, line){}
-};
+    ReqError(const string& msg):msg_(msg){};
 
-
-class ReqError: public Error
-{
-public:
-    ReqError(const string& msg, const char* file, int line)
-        :Error(msg, file, line){}
+private:
+    string msg_;
 };

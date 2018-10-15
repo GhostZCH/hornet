@@ -1,5 +1,7 @@
 #pragma once
 #include "hornet.h"
+#include "tool.h"
+#include <sys/sendfile.h>
 
 class Buffer
 {
@@ -20,8 +22,8 @@ public:
     MemBuffer(size_t buf_size);
 
     char *Get(){return data_.get();}
-    bool Recv(int sock);
-    bool Send(int sock);
+    void Recv(int sock);
+    void Send(int sock);
 
 private:
     unique_ptr<char []> data_;
@@ -32,9 +34,9 @@ class FileBuffer:public Buffer
 {
 public:
     FileBuffer(int fd, off_t off, size_t buf_size);
-    bool Recv(int sock);
-    bool Send(int sock);
-    bool Write(const char *buf, size_t size);
+    void Recv(int sock);
+    void Send(int sock);
+    void Write(const char *buf, size_t size);
 
 private:
     int fd_;
