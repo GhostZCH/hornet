@@ -71,7 +71,7 @@ void FileBuffer::Recv(int sock)
         }
 
         if (tmp_size > 0 && tmp_size != pwrite(fd_, tmp_.get(), size, off_ + recved)) {
-            throw ReqError("FileBuffer::Recv pwrite failed");
+            throw SvrError("FileBuffer::Recv pwrite failed", __FILE__, __LINE__);
         }
 
         if (tmp_size < FILE_RECV_TMP_SIZE) {

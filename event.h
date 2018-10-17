@@ -29,7 +29,7 @@ public:
     virtual void Init(EventEngine* engine) = 0;
     virtual void Close(EventEngine* engine) = 0;
 
-    virtual void Handle(Event* ev, EventEngine* engine) = 0;
+    virtual bool Handle(Event* ev, EventEngine* engine) = 0;
 
     int fd{-1};
 };

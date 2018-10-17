@@ -40,7 +40,7 @@ public:
     }
 
     friend ostream& operator << (ostream& out,const SvrError& err) {
-        out << err.file_ << "[" << err.line_ << "]: (" << errno_ << ")" << err.msg_;
+        out << err.file_ << "[" << err.line_ << "]: (" << err.errno_ << ")" << err.msg_;
         return out;
     }
 
@@ -55,7 +55,8 @@ private:
 class ReqError
 {
 public:
-    ReqError(const string& msg):msg_(msg){};
+    ReqError(const string& msg):msg_(msg){}
+    string& Msg(){return msg_;}
 
 private:
     string msg_;

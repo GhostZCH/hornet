@@ -14,7 +14,7 @@ public:
     void Init(EventEngine* engine);
     void Close(EventEngine* engine);
 
-    void Handle(Event* ev, EventEngine* engine);
+    bool Handle(Event* ev, EventEngine* engine);
 
 private:
     string ip_;

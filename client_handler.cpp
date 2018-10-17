@@ -28,16 +28,12 @@ void ClientHandler::Close(EventEngine* engine)
 }
 
 
-void ClientHandler::Handle(Event* ev, EventEngine* engine)
+bool ClientHandler::Handle(Event* ev, EventEngine* engine)
 {
     if (!req_) {
-        if (ev->timer || ev->error) {
-            throw ReqError("client close", __FILE__, __LINE__);
-        }
-
         char tmp;
-        if (recv(fd, &tmp, 1, MSG_PEEK) != 1) {
-            throw ReqError("client close", __FILE__, __LINE__);
+        if (ev->timer || ev->error || recv(fd, &tmp, 1, MSG_PEEK) != 1) {
+            return false;
         }
 
         auto disk = static_cast<Disk*>(engine->context["disk"]);
@@ -46,34 +42,42 @@ void ClientHandler::Handle(Event* ev, EventEngine* engine)
     }
 
     if (ev->timer) {
-        req_->Timeout();
+        req_->Error("TIMEOUT");
     }
 
     if (ev->error) {
-        req_->Error();
+        req_->Error("SOCKET_CLOSE");
     }
 
-    bool go = true;
-    while (go) {
-        switch (req_->Phase()) {
-            case PH_READ_HEADER:
-                go = req_->ReadHeader();
-                break;
-            case PH_READ_BODY:
-                go = req_->ReadBody();
-                break;
-            case PH_SEND_RSP:
-                go =req_->SendResponse();
-                break;
-            case PH_SEND_CACHE:
-                go = req_->SendCache();
-                break;
-            case PH_FINISH:
-                go = req_->Finish();
-                req_.reset();
-                break;
-            default:
-                throw SvrError("unknown phase " + to_string(req_->Phase()), __FILE__, __LINE__);
+    try {
+        bool go = true;
+        while (go) {
+            switch (req_->Phase()) {
+                case PH_READ_HEADER:
+                    go = req_->ReadHeader();
+                    break;
+                case PH_READ_BODY:
+                    go = req_->ReadBody();
+                    break;
+                case PH_SEND_RSP:
+                    go =req_->SendResponse();
+                    break;
+                case PH_SEND_CACHE:
+                    go = req_->SendCache();
+                    break;
+                case PH_FINISH:
+                    go = req_->Finish();
+                    req_.reset();
+                    break;
+                default:
+                    throw SvrError("unknown phase " + to_string(req_->Phase()), __FILE__, __LINE__);
+            }
         }
+        return true;
+    } catch (ReqError& err) {
+        req_->Error(err.Msg());
+        req_->Finish();
+        req_.reset();
+        return false;
     }
 }

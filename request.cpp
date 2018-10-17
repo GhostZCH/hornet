@@ -1,16 +1,16 @@
 #include "request.h"
 
 
-pair<int, string> http_status[] = {
+pair<int, const char*> http_status[] = {
     {STATUS_OK, "200 OK"},
     {STATUS_CREATED, "204 Created"},
     {STATUS_NOT_FOUND, "404 Not Found"},
 };
 
 
-unordered_map<int, string> g_http_status(
+unordered_map<int, const char*> g_http_status(
     http_status,
-    http_status + sizeof(http_status) / sizeof(pair<int, string>)
+    http_status + sizeof(http_status) / sizeof(pair<int, const char*>)
 );
 
 
@@ -52,11 +52,7 @@ Request::Request(int fd, Disk *d, AccessLog* log)
 
 bool Request::ReadHeader()
 {
-    if (!recv_->Recv(fd_)) {
-        error_ = "READ-ERROR";
-        phase_ = PH_FINISH;
-        return true;
-    }
+    recv_->Recv(fd_);
 
     auto recv = dynamic_cast<MemBuffer *>(recv_.get());
     char *end = (char *)memmem(recv->Get(), recv_->recved, "\r\n\r\n", 4);
@@ -71,55 +67,72 @@ bool Request::ReadHeader()
     header_len_ = end - recv->Get();
 
     const char *args, *headers;
-    if (!parseReqLine(args, headers) || !parseArgs(args) || !parseHeaders(headers)) {
-        error_ = "BAD-REQUEST";
-        return false;
-    }
+    parseReqLine(args, headers);
+    parseArgs(args);
+    parseHeaders(headers);
 
     if (method_ == "GET") {
-        return getItem();
+        getItem();
     }
 
     if (method_ == "POST") {
-        return addItem();
+        addItem();
     }
 
-    return delItem();
+    if (method_ == "DELETE") {
+         delItem();
+    }
+
+    return true;
 }
 
 
 bool Request::ReadBody()
 {
-    // TODO
+    recv_->Recv(fd_);
+    if (recv_->recved == recv_->size) {
+        state_ = STATUS_OK;
+        phase_ = PH_SEND_RSP;
+        return true;
+    }
+    return false;
 }
 
 
 bool Request::SendResponse()
 {
+    if(!send_) {
+        size_t size = stoull(get_conf("request.send_buf"));
+        auto mem = new MemBuffer(size);
+        send_ = unique_ptr<Buffer>(mem);
+        mem->size = snprintf(mem->Get(), mem->size, RSP_TEMPLATE, g_http_status[state_]);
+    }
 
+    send_->Send(fd_);
+
+    if (send_->size == send_->sended) {
+        phase_ = PH_FINISH;
+        return true;
+    }
+
+    return false;
 }
 
 
 bool Request::SendCache()
 {
-
-}
-
-
-bool Request::setError(const string& err)
-{
-    error_ = err;
-    phase_ = PH_FINISH;
-    return true;
+    send_->Send(fd_);
+    if (send_->size == send_->sended) {
+        state_ = STATUS_OK;
+        phase_ = PH_FINISH;
+        return true;
+    }
+    return false;
 }
 
 
 bool Request::Finish()
 {
-    if (recv_->size == 0) {
-        return;
-    }
-
     if (headers_.find("Client-Ext") != headers_.end()
         && headers_["Client-Ext"] != "") {
         client_ext_ = headers_["Client-Ext"];
@@ -131,8 +144,8 @@ bool Request::Finish()
         method_.c_str(),
         uri_.c_str(),
         state_,
-        0, //TODO recv len
-        0, //TODO send len
+        recv_ ? recv_->recved : -1,
+        send_ ? send_->sended : -1,
         error_.c_str(),
         server_ext_.c_str(),
         client_ext_.c_str()
@@ -143,25 +156,20 @@ bool Request::Finish()
 }
 
 
-void Request::Timeout()
+void Request::Error(const string& msg)
 {
-    setError("TIME-OUT");
+    error_ = msg;
+    phase_ = PH_FINISH;
 }
 
 
-void Request::Error()
-{
-    setError("CONNECTION-ERR");
-}
-
-
-bool Request::parseReqLine(const char* &args, const char* &headers)
+void Request::parseReqLine(const char* &args, const char* &headers)
 {
     auto recv = dynamic_cast<MemBuffer *>(recv_.get());
 
     cmatch match;
 	if (!regex_search(recv->Get(), match, REQ_LINE_REGEX)) {
-        return false;
+        throw ReqError("BAD_REQ_LINE");
     }
 
     method_ = match[1].str();
@@ -172,38 +180,30 @@ bool Request::parseReqLine(const char* &args, const char* &headers)
 
     args = match[4].first;
     headers = match[0].second;
-
-    return true;
 }
 
 
-bool Request::parseHeaders(const char *start)
+void Request::parseHeaders(const char *start)
 {
     cmatch match;
-
     while(regex_search(start, match, HEADER_REGEX)){
         headers_[match[1].str()] = match[2].str();
         start = match[0].second;
     }
-
-    return true;
 }
 
 
-bool Request::parseArgs(const char *start)
+void Request::parseArgs(const char *start)
 {
     cmatch match;
-
     while(regex_search(start, match, ARG_REGEX)) {
         args_[match[1].str()] = match[2].str();
         start = match[0].second;
     }
-
-    return true;
 }
 
 
-bool Request::parseTags(uint16_t tags[])
+void Request::parseTags(uint16_t tags[])
 {
     for (int i = 0; i < TAG_LIMIT; i++) {
         tags[i] = 0;
@@ -211,18 +211,15 @@ bool Request::parseTags(uint16_t tags[])
         if (iter != args_.end()) {
             int t = stoi(iter->second);
             if (t < 0 || t > 65534) {
-                error_ = "TAG-ERROR";
-                return false;
+                throw ReqError("TAG-ERROR-" + to_string(t));
             }
             tags[i] = t;
         }
     }
-
-    return true;
 }
 
 
-bool Request::getItem()
+void Request::getItem()
 {
     shared_ptr<Item> item;
     shared_ptr<Block> block;
@@ -234,8 +231,6 @@ bool Request::getItem()
         phase_ = PH_SEND_RSP;
         state_ = STATUS_NOT_FOUND;
     }
-
-    return true;
 }
 
 
@@ -251,12 +246,12 @@ void Request::addItem()
     }
 
     if (headers_.find("Content-Length") == headers_.end()) {
-        return setError("NO_CONTENT_LENTH");
+        throw ReqError("NO_CONTENT_LENTH");
     }
 
     size_t cl = stoull(headers_["Content-Length"]);
     if (cl > stoull(get_conf("disk.block.size"))) {
-        return setError("ITEM_TOO_BIG");
+        throw ReqError("ITEM_TOO_BIG");
     }
 
     if (headers_.find("expire") == headers_.end()) {
@@ -278,7 +273,7 @@ void Request::addItem()
     item->size = item->header_size + cl;
 
     parseTags(item->tags);
-    disk_->Add(dir_, id_, item, block));
+    disk_->Add(dir_, id_, item, block);
 
     auto file = new FileBuffer(block->Fd(), item->pos, item->size);
     auto mem = dynamic_cast<MemBuffer*>(recv_.get());
@@ -291,20 +286,17 @@ void Request::addItem()
     recv_.reset();
     recv_ = unique_ptr<Buffer>(file);
     phase_ = PH_READ_BODY;
-
-    return true;
 }
 
 
-bool Request::delItem()
+void Request::delItem()
 {
     uint16_t tags[TAG_LIMIT];
-
-    if (!parseTags(tags)) {
-        return false;
-    }
+    parseTags(tags);
 
     uint32_t n = disk_->Delete(dir_, id_, tags);
     server_ext_ = to_string(n);
-    return true;
+
+    state_ = STATUS_OK;
+    phase_ = PH_SEND_RSP;
 }

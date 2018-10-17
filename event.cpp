@@ -32,7 +32,7 @@ void EventEngine::Stop() {
 void EventEngine::AddHandler(shared_ptr<Handler>& h)
 {
     if (handlers_.size() >= (size_t)con_limit_) {
-        throw ReqError("too many connections", __FILE__, __LINE__);
+        throw ReqError("too many connections");
     }
 
     if (handlers_.find(h->fd) != handlers_.end()) {
@@ -59,7 +59,7 @@ void EventEngine::AddEpollEvent(int fd, int flag)
     event.data.fd = fd;
     event.events = flag;
     if (epoll_ctl(epoll_, EPOLL_CTL_ADD, fd, &event) != 0) {
-        throw ReqError("add to epoll fail fd = " + to_string(fd), __FILE__, __LINE__);
+        throw ReqError("add to epoll fail fd = " + to_string(fd));
     }
 }
 
@@ -67,7 +67,7 @@ void EventEngine::AddEpollEvent(int fd, int flag)
 void EventEngine::DelEpollEvent(int fd)
 {
     if (epoll_ctl(epoll_, EPOLL_CTL_DEL, fd, NULL) != 0) {
-        throw ReqError("delete from epoll fail fd = " + to_string(fd), __FILE__, __LINE__);
+        throw ReqError("delete from epoll fail fd = " + to_string(fd));
     }
 }
 
@@ -108,9 +108,7 @@ void EventEngine::HandleEpollEvent()
         event.write = (epoll_events[i].events & EPOLLOUT) != 0;
         event.error = (epoll_events[i].events & (EPOLLHUP|EPOLLERR)) != 0;
 
-        try {
-            iter->second->Handle(&event, this);
-        } catch (ReqError& err) {
+        if(!iter->second->Handle(&event, this)){
             iter->second->Close(this);
         }
     }
@@ -139,9 +137,7 @@ void EventEngine::HandleTimerEvent()
         event.timer = true;
         event.data.i = h & 0xFFFFFFFF;
 
-        try {
-            iter->second->Handle(&event, this);
-        } catch (ReqError& err) {
+        if(!iter->second->Handle(&event, this)){
             iter->second->Close(this);
         }
     }

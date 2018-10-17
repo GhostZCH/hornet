@@ -35,7 +35,7 @@ void AcceptHandler::Close(EventEngine *engine)
 }
 
 
-void AcceptHandler::Handle(Event* ev, EventEngine* engine)
+bool AcceptHandler::Handle(Event* ev, EventEngine* engine)
 {
     if (ev->error) {
         throw SvrError("AcceptHandler Handle failed", __FILE__, __LINE__);
@@ -43,7 +43,7 @@ void AcceptHandler::Handle(Event* ev, EventEngine* engine)
 
     unique_lock<mutex> ulock(accept_lock_, try_to_lock);
     if (!ulock) {
-        return;
+        return true;
     }
 
     int cfd;
@@ -60,4 +60,6 @@ void AcceptHandler::Handle(Event* ev, EventEngine* engine)
     if (errno != EAGAIN) {
         throw SvrError("AcceptHandler Handle failed", __FILE__, __LINE__);
     }
+
+    return true;
 }

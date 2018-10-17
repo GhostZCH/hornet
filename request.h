@@ -30,27 +30,25 @@ public:
     ~Request();
 
     ReqPhase Phase(){return phase_;}
+    void Error(const string& msg);
 
     bool ReadHeader();
     bool ReadBody();
     bool SendResponse();
     bool SendCache();
-    void Timeout();
-    void Error();
     bool Finish();
 
+
 private:
-    bool parseReqLine(const char* &args, const char* &headers);
-    bool parseHeaders(const char* headers);
-    bool parseArgs(const char* args);
-    bool parseTags(uint16_t tags[]);
-    bool log();
+    void parseReqLine(const char* &args, const char* &headers);
+    void parseHeaders(const char* headers);
+    void parseArgs(const char* args);
+    void parseTags(uint16_t tags[]);
+    void log();
 
-    bool getItem();
-    bool addItem();
-    bool delItem();
-
-    bool setError(const string& err);
+    void getItem();
+    void addItem();
+    void delItem();
 
 private:
     int fd_;

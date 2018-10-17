@@ -6,8 +6,8 @@
 class Buffer
 {
 public:
-    virtual bool Recv(int sock);
-    virtual bool Send(int sock);
+    virtual void Recv(int sock);
+    virtual void Send(int sock);
 
     size_t size;
     size_t recved;
