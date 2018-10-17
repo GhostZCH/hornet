@@ -15,12 +15,12 @@ unordered_map<int, const char*> g_http_status(
 
 
 // version time time-cost method uri stat recvlen sendlen error svr-ext client-ext
-const char *LOG_FROMART = "%d %llu %llu %s %s %u %lu %lu %s %s %s\n";
+const char *LOG_FROMART = "%d %llu %llu %s %s %u %zd %zd %s %s %s\n";
 const char* RSP_TEMPLATE = "HTTP/1.1 %s\r\nServer: Hornet\r\nContent-Length: 0\r\n\r\n";
 
 const regex ARG_REGEX("(\\w+)=(\\w+)&?");
 const regex HEADER_REGEX("(.+): (.+)\r\n");
-const regex REQ_LINE_REGEX("^(GET|POST|DELETE) /(\\d+)/(\\d+)\\??(.*) HTTP/1.1\r\n");
+const regex REQ_LINE_REGEX("^(GET|POST|DELETE) /(\\d+)/(\\d+)\\??""(.*) HTTP/1.1\r\n");
 
 
 Request::Request(int fd, Disk *d, AccessLog* log)
@@ -173,7 +173,7 @@ void Request::parseReqLine(const char* &args, const char* &headers)
     }
 
     method_ = match[1].str();
-    uri_ = string(match[2].first, match[4].second);
+    uri_ = string(match[2].first - 1, match[4].second);
 
     id_ = stoull(match[2].str());
     dir_ = stoull(match[3].str());
@@ -211,7 +211,7 @@ void Request::parseTags(uint16_t tags[])
         if (iter != args_.end()) {
             int t = stoi(iter->second);
             if (t < 0 || t > 65534) {
-                throw ReqError("TAG-ERROR-" + to_string(t));
+                throw ReqError("TAG_ERROR_" + to_string(t));
             }
             tags[i] = t;
         }
@@ -254,8 +254,8 @@ void Request::addItem()
         throw ReqError("ITEM_TOO_BIG");
     }
 
-    if (headers_.find("expire") == headers_.end()) {
-        headers_["expire"] = get_conf("item.default_expire");
+    if (args_.find("expire") == args_.end()) {
+        args_["expire"] = get_conf("item.default_expire");
     }
 
     stringstream buf;

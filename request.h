@@ -27,7 +27,6 @@ class Request
 {
 public:
     Request(int fd, Disk *d, AccessLog* log);
-    ~Request();
 
     ReqPhase Phase(){return phase_;}
     void Error(const string& msg);

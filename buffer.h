@@ -6,13 +6,13 @@
 class Buffer
 {
 public:
-    virtual void Recv(int sock);
-    virtual void Send(int sock);
+    virtual void Recv(int sock) = 0;
+    virtual void Send(int sock) = 0;
 
-    size_t size;
-    size_t recved;
-    size_t sended;
-    size_t processed; // for outer use
+    ssize_t size;
+    ssize_t recved;
+    ssize_t sended;
+    ssize_t processed; // for outer use
 };
 
 
@@ -33,10 +33,10 @@ private:
 class FileBuffer:public Buffer
 {
 public:
-    FileBuffer(int fd, off_t off, size_t buf_size);
+    FileBuffer(int fd, off_t off, ssize_t buf_size);
     void Recv(int sock);
     void Send(int sock);
-    void Write(const char *buf, size_t size);
+    void Write(const char *buf, ssize_t size);
 
 private:
     int fd_;
