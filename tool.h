@@ -40,7 +40,7 @@ public:
     }
 
     friend ostream& operator << (ostream& out,const SvrError& err) {
-        out << err.file_ << "[" << err.line_ << "]: (" << err.errno_ << ")" << err.msg_;
+        out << err.file_ << "[" << err.line_ << "]: " << err.msg_ << "(" << strerror(err.errno_) << ")";
         return out;
     }
 

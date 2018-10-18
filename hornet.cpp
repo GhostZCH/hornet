@@ -112,6 +112,8 @@ void signal_handler(int sig)
 
 int main(int argc, char* argv[])
 {
+    unique_ptr<ofstream> errlog;
+
     try {
         update_time();
         set_logger("ERROR", &cerr);
@@ -121,8 +123,8 @@ int main(int argc, char* argv[])
         get_param(argc, argv, params);
         load_conf(params["c"].second);
 
-        ofstream errlog = ofstream(get_conf("log.error"), ios_base::app);
-        if (!errlog.is_open() || !set_logger(get_conf("log.level"), &errlog)) {
+        errlog = unique_ptr<ofstream>(new ofstream(get_conf("log.error"), ios_base::app));
+        if (!errlog->is_open() || !set_logger(get_conf("log.level"), errlog.get())) {
             throw SvrError("open errlog failed", __FILE__, __LINE__);
         }
 
