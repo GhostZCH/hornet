@@ -46,7 +46,7 @@ Request::Request(int fd, Disk *d, AccessLog* log)
     server_ext_ = "-";
 
     size_t size = stoull(get_conf("request.send_buf"));
-    recv_ = unique_ptr<Buffer>(new MemBuffer(size));
+    recv_ = shared_ptr<Buffer>(new MemBuffer(size));
 }
 
 
