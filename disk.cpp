@@ -143,7 +143,7 @@ void Disk::Add(const size_t dir, const size_t id, shared_ptr<Item>& item, shared
 
 bool Disk::Get(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block)
 {
-    unique_lock<mutex> lock(meta_mutex_);
+//    unique_lock<mutex> lock(meta_mutex_);
 
     if (meta_.find(dir) == meta_.end() 
         || meta_[dir].find(id) == meta_[dir].end()
