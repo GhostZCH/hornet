@@ -25,7 +25,7 @@ AcceptHandler::AcceptHandler(const string& ip, short port)
 
 void AcceptHandler::Init(EventEngine *engine)
 {
-    engine->AddTimer(fd, 0, 0);
+    engine->AddEpollEvent(fd, EPOLLIN);
 }
 
 
@@ -50,14 +50,16 @@ bool AcceptHandler::Handle(Event* ev, EventEngine* engine)
     Address addr;
     socklen_t addr_size = sizeof(addr);
 
-    while ((cfd = accept4(fd, &addr, &addr_size, SOCK_NONBLOCK)) > 0) {
+    const int max = 20;
+    int count = 0;
+    while (count < max && (cfd = accept4(fd, &addr, &addr_size, SOCK_NONBLOCK)) > 0) {
+        count += 1;
         ClientHandler* client = new ClientHandler();
         client->fd = cfd;
-
         client->Init(engine);
     }
 
-    if (errno != EAGAIN) {
+    if (count < max && errno != EAGAIN) {
         throw SvrError("AcceptHandler Handle failed", __FILE__, __LINE__);
     }
 

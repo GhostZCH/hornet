@@ -16,13 +16,13 @@ void ClientHandler::Init(EventEngine* engine)
 
     engine->AddHandler(h);
     engine->AddEpollEvent(fd);
-    engine->AddTimer(fd, timeout_, 0);
+    // engine->AddTimer(fd, timeout_, 0);
 }
 
 
 void ClientHandler::Close(EventEngine* engine)
 {
-    engine->DelTimer(fd, timeout_, 0);
+    // engine->DelTimer(fd, timeout_, 0);
     engine->DelEpollEvent(fd);
     engine->DelHandler(fd);
 }
@@ -30,15 +30,19 @@ void ClientHandler::Close(EventEngine* engine)
 
 bool ClientHandler::Handle(Event* ev, EventEngine* engine)
 {
-    if (!req_) {
-        char tmp;
-        if (ev->timer || ev->error || recv(fd, &tmp, 1, MSG_PEEK) != 1) {
-            return false;
-        }
+    if (!req_){
+        if (ev->read) {
+            char tmp;
+            if (ev->timer || ev->error || recv(fd, &tmp, 1, MSG_PEEK) != 1) {
+                return false;
+            }
 
-        auto disk = static_cast<Disk*>(engine->context["disk"]);
-        auto logger = static_cast<AccessLog*>(engine->context["access"]);
-        req_ = unique_ptr<Request>(new Request(fd, disk, logger));
+            auto disk = static_cast<Disk*>(engine->context["disk"]);
+            auto logger = static_cast<AccessLog*>(engine->context["access"]);
+            req_ = unique_ptr<Request>(new Request(fd, disk, logger));
+        } else {
+            return true;
+        }
     }
 
     if (ev->timer) {

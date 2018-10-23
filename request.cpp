@@ -61,7 +61,7 @@ bool Request::ReadHeader()
             error_ = "HEADER-TOO-LARGE";
             return false;
         }
-        return true;
+        return false;
     }
 
     header_len_ = end - recv->Get();
