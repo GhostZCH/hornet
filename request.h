@@ -63,8 +63,8 @@ private:
     uint16_t state_;
     uint32_t header_len_;
 
-    shared_ptr<Buffer> recv_;
-    shared_ptr<Buffer> send_;
+    unique_ptr<Buffer> recv_;
+    unique_ptr<Buffer> send_;
 
     string uri_;
     string method_;

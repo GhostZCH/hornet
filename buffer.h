@@ -8,6 +8,7 @@ class Buffer
 public:
     virtual void Recv(int sock) = 0;
     virtual void Send(int sock) = 0;
+    virtual ~Buffer(){};
 
     ssize_t size;
     ssize_t recved;

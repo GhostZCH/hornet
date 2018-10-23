@@ -57,7 +57,7 @@ bool AcceptHandler::Handle(Event* ev, EventEngine* engine)
         ClientHandler* client = new ClientHandler();
         client->fd = cfd;
         client->Init(engine);
-    } 
+    }
 
     if (count < max && errno != EAGAIN) {
         throw SvrError("AcceptHandler Handle failed", __FILE__, __LINE__);
