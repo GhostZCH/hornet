@@ -280,7 +280,7 @@ void Request::addItem()
 
     // write headers and remain body
     file->Write(header.c_str(), header.size());
-    file->Write(mem->Get() + header_len_, mem->recved - header_len_);
+    file->Write(mem->Get() + header_len_ + 4, mem->recved - header_len_ - 4);
 
     // relead membuf, set filebuf
     recv_.reset();

@@ -111,4 +111,5 @@ void FileBuffer::Write(const char *buf, ssize_t size)
     if(pwrite(fd_, buf, size, off_ + recved) != size) {
         throw SvrError("FileBuffer::Write pwrite failed", __FILE__, __LINE__);
     }
+    recved += size;
 }
