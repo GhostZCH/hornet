@@ -3,7 +3,7 @@
 
 pair<int, const char*> http_status[] = {
     {STATUS_OK, "200 OK"},
-    {STATUS_CREATED, "204 Created"},
+    {STATUS_CREATED, "201 Created"},
     {STATUS_NOT_FOUND, "404 Not Found"},
 };
 
@@ -28,20 +28,15 @@ Request::Request(int fd, Disk *d, AccessLog* log)
     fd_ = fd;
     disk_ = d;
     log_ = log;
-
     start_ = g_now_ms;
     phase_ = PH_READ_HEADER;
-
     id_ = 0;
     dir_ = 0;
     state_ = STATUS_OK;
     header_len_ = 0;
-
     uri_ = "-";
     method_ = "-";
-
     error_ = "-";
-
     client_ext_ = "-";
     server_ext_ = "-";
 
@@ -73,14 +68,12 @@ bool Request::ReadHeader()
 
     if (method_ == "GET") {
         getItem();
-    }
-
-    if (method_ == "POST") {
+    } else if (method_ == "POST") {
         addItem();
-    }
-
-    if (method_ == "DELETE") {
-         delItem();
+    } else if (method_ == "DELETE") {
+        delItem();
+    } else {
+        throw ReqError("UNKNONWN_METHOD");
     }
 
     return true;
@@ -91,8 +84,14 @@ bool Request::ReadBody()
 {
     recv_->Recv(fd_);
     if (recv_->recved == recv_->size) {
-        state_ = STATUS_OK;
+        state_ = STATUS_CREATED;
         phase_ = PH_SEND_RSP;
+
+        shared_ptr<Item> item;
+        shared_ptr<Block> block;
+        disk_->Get(dir_, id_, item, block);
+        item->putting = false;
+
         return true;
     }
     return false;
@@ -109,7 +108,6 @@ bool Request::SendResponse()
     }
 
     send_->Send(fd_);
-
     if (send_->size == send_->sended) {
         phase_ = PH_FINISH;
         return true;
@@ -223,7 +221,9 @@ void Request::getItem()
 {
     shared_ptr<Item> item;
     shared_ptr<Block> block;
-    if (disk_->Get(dir_, id_, item, block)) {
+    disk_->Get(dir_, id_, item, block);
+
+    if (item && verify_item(item.get())) {
         send_ = unique_ptr<Buffer>(new FileBuffer(block->Fd(), item->pos, item->size));
         phase_ = PH_SEND_CACHE;
         state_ = STATUS_OK;
@@ -239,7 +239,8 @@ void Request::addItem()
     shared_ptr<Item> item;
     shared_ptr<Block> block;
 
-    if (disk_->Get(dir_, id_, item, block)) {
+    disk_->Get(dir_, id_, item, block);
+    if (item) {
         state_ = STATUS_OK;
         phase_ = PH_SEND_RSP;
         return;

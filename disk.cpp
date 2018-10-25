@@ -41,11 +41,9 @@ Disk::~Disk()
         for (auto id_item : dir_map.second) {
             if (verify_item(id_item.second.get())) {
                 to_disk_item(ditem, dir_map.first, id_item.first, *id_item.second);
-
                 if (write(meta_fd, &ditem, sizeof(ditem)) != sizeof(ditem)){
                     return;
                 }
-
                 header.item_count++;
             }
         }
@@ -141,20 +139,16 @@ void Disk::Add(const size_t dir, const size_t id, shared_ptr<Item>& item, shared
 }
 
 
-bool Disk::Get(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block)
+void Disk::Get(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block)
 {
     unique_lock<mutex> lock(meta_mutex_);
 
-    if (meta_.find(dir) == meta_.end() 
-        || meta_[dir].find(id) == meta_[dir].end()
-        || !verify_item(meta_[dir][id].get())) {
-        return false;
+    if (meta_.find(dir) == meta_.end() || meta_[dir].find(id) == meta_[dir].end()) {
+        return;
     }
 
     item = meta_[dir][id];
     block = blocks_[item->block];
-
-    return true;
 }
 
 
@@ -222,6 +216,7 @@ void Disk::addBlock()
             }
         }
 
+        blocks_[block]->Delete();
         blocks_.erase(block);
     }
 

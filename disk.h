@@ -8,8 +8,8 @@ class Block
 {
 public:
     Block(int fd, string& name):fd_(fd),name_(name){};
-    ~Block(){close(fd_);unlink(name_.c_str());}
-
+    ~Block(){close(fd_);}
+    void Delete(){unlink(name_.c_str());}
     int Fd(){return fd_;}
 
 private:
@@ -35,7 +35,7 @@ public:
 
     void Init();
     void Add(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block);
-    bool Get(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block);
+    void Get(const size_t dir, const size_t id, shared_ptr<Item>& item, shared_ptr<Block> &block);
     uint32_t Delete(const size_t dir, const size_t id, const uint16_t tags[]);
 
 private:
