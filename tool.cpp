@@ -11,11 +11,13 @@ time_t g_now_ms;
 map<string, string> g_config;
 const char *g_log_level_str[] = {nullptr, "debug", "warn", "error"};
 
+
 void update_time()
 {
     g_now_ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
     g_now =  g_now_ms / 1000;
 }
+
 
 string get_time_str()
 {

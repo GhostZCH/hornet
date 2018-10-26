@@ -30,25 +30,20 @@ string& get_conf(const string& name);
 void get_param(int argc, char *argv[], map<string, pair<string, string>>& params);
 
 
-class SvrError {
+class SvrError:public exception
+{
 public:
     SvrError(const string& msg, const char* file, int line) {
-        msg_ = msg;
-        file_ = file;
-        line_ = line;
-        errno_ = errno;
+        stringstream ss;
+        ss <<  file << "[" << line << "]: " << msg
+           << "(" << (strerror(errno) == nullptr ? "NULL" : strerror(errno)) << ")";
+        msg_ = ss.str();
     }
 
-    friend ostream& operator << (ostream& out,const SvrError& err) {
-        out << err.file_ << "[" << err.line_ << "]: " << err.msg_ << "(" << strerror(err.errno_) << ")";
-        return out;
-    }
+    const char* what() const noexcept {return msg_.c_str();}
 
 private:
-    int errno_;
-    int line_;
     string msg_;
-    const char* file_;
 };
 
 

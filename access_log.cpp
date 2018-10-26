@@ -21,7 +21,6 @@ void AccessLog::Init()
 
 void AccessLog::Reopen()
 {
-    // async
     need_reopen_ = true;
 }
 

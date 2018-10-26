@@ -54,7 +54,14 @@ void Hornet::Start()
         worker->AddHandler(accepter);
         accepter->Init(worker);
         
-        threads_.push_back(thread([worker]()->void{worker->Forever();}));
+        threads_.push_back(thread([this, worker]()->void {
+            try {
+                worker->Forever();
+            } catch (exception & exc) {
+                LOG(LERROR, exc.what());
+            }
+            this->Stop();
+        }));
     }
 
     // auto *svr = new ServerHandler();
@@ -138,8 +145,6 @@ int main(int argc, char* argv[])
 
         server->Start();
         return 0;
-    } catch (SvrError & exc) {
-        LOG(LERROR, exc);
     } catch (exception & exc) {
         LOG(LERROR, exc.what());
     } 
