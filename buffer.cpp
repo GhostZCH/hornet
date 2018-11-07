@@ -96,9 +96,9 @@ void FileBuffer::Send(int sock)
 {
     while (sended < size){
         off_t start = off_ + sended;
-        ssize_t n = sendfile(sock, fd_, &start, size);
+        ssize_t n = sendfile(sock, fd_, &start, size - sended);
         if (n > 0) {
-            off_ += n;
+            sended += n;
         } else if (n == 0 || errno != EAGAIN){
             throw ReqError("FILE_SEND");
         }
