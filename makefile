@@ -10,7 +10,7 @@ TARGET  = hornet
 all : $(TARGET)
 
 $(TARGET) : $(OBJECTS)
-	$(CXX) -o $@ $^  $(LDLIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $^  $(LDLIBS)
 
 clean :
 	rm -rf $(TARGET) *.o 
