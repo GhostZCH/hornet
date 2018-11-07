@@ -50,9 +50,9 @@ bool Request::ReadHeader()
     recv_->Recv(fd_);
 
     auto recv = dynamic_cast<MemBuffer *>(recv_.get());
-    char *end = (char *)memmem(recv->Get(), recv_->recved, "\r\n\r\n", 4);
+    char *end = (char *)memmem(recv->Get(), recv_->processed, "\r\n\r\n", 4);
     if (end == nullptr) {
-        if (recv->recved == recv->size) {
+        if (recv->processed == recv->size) {
             error_ = "HEADER-TOO-LARGE";
             return false;
         }
@@ -83,7 +83,7 @@ bool Request::ReadHeader()
 bool Request::ReadBody()
 {
     recv_->Recv(fd_);
-    if (recv_->recved == recv_->size) {
+    if (recv_->processed == recv_->size) {
         state_ = STATUS_CREATED;
         phase_ = PH_SEND_RSP;
 
@@ -108,7 +108,7 @@ bool Request::SendResponse()
     }
 
     send_->Send(fd_);
-    if (send_->size == send_->sended) {
+    if (send_->size == send_->processed) {
         phase_ = PH_FINISH;
         return true;
     }
@@ -120,7 +120,7 @@ bool Request::SendResponse()
 bool Request::SendCache()
 {
     send_->Send(fd_);
-    if (send_->size == send_->sended) {
+    if (send_->size == send_->processed) {
         state_ = STATUS_OK;
         phase_ = PH_FINISH;
         return true;
@@ -142,8 +142,8 @@ bool Request::Finish()
         method_.c_str(),
         uri_.c_str(),
         state_,
-        recv_ ? recv_->recved : -1,
-        send_ ? send_->sended : -1,
+        recv_ ? recv_->processed : -1,
+        send_ ? send_->processed : -1,
         error_.c_str(),
         server_ext_.c_str(),
         client_ext_.c_str()
@@ -281,7 +281,7 @@ void Request::addItem()
 
     // write headers and remain body
     file->Write(header.c_str(), header.size());
-    file->Write(mem->Get() + header_len_ + 4, mem->recved - header_len_ - 4);
+    file->Write(mem->Get() + header_len_ + 4, mem->processed - header_len_ - 4);
 
     // relead membuf, set filebuf
     recv_.reset();
