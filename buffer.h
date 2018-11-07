@@ -11,9 +11,7 @@ public:
     virtual ~Buffer(){};
 
     ssize_t size;
-    ssize_t recved;
-    ssize_t sended;
-    ssize_t processed; // for outer use
+    ssize_t processed;
 };
 
 
