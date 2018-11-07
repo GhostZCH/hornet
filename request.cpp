@@ -54,7 +54,6 @@ bool Request::ReadHeader()
     if (end == nullptr) {
         if (recv->processed == recv->size) {
             error_ = "HEADER-TOO-LARGE";
-            return false;
         }
         return false;
     }
