@@ -207,7 +207,6 @@ func (s *Store) Get(dir, id uint64) []byte {
 	if dir, ok := s.meta[dir]; ok {
 		if item, ok := dir[id]; ok {
 			if block, ok := s.blocks[item.Block]; ok {
-				// 不能直接返回　[]byte, 需要让携程中保持一个mmap的引用，不然block删除的时候会出现bus error
 				return block[item.Off : item.Off+item.Size]
 			}
 		}
