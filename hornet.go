@@ -1,47 +1,46 @@
 package main
 
 import (
+	"log"
 	"net"
-    "log"
-    "runtime"
+	"runtime"
 )
 
 var cache = Store{}
 
 func Handle(conn net.Conn) {
-    defer conn.Close()
+	defer conn.Close()
 
-    for {
-        recv := make([]byte, 4096)
+	for {
+		recv := make([]byte, 4096)
 		n, err := conn.Read(recv)
-        if err != nil {
+		if err != nil {
 			log.Println(err)
-            return
-        }
+			return
+		}
 
-        r := Req{}
-        r.Parse(recv[:n])
+		r := Req{}
+		r.Parse(recv[:n])
 		conn.Write(cache.Get(r.Dir, r.ID))
-    }
+	}
 }
 
-
 func main() {
-    runtime.GOMAXPROCS(8)
-    cache.Init()
+	runtime.GOMAXPROCS(8)
+	cache.Init("test/", 4096, 4)
 
-    listen, err := net.Listen("tcp", ":8080")
-    if err != nil {
-        log.Println("listen error: ", err)
-        return
-    }
+	listen, err := net.Listen("tcp", ":8080")
+	if err != nil {
+		log.Println("listen error: ", err)
+		return
+	}
 
-    for {
-        conn, err := listen.Accept()
-        if err != nil {
-            log.Println("accept error: ", err)
-            break
-        }
-        go Handle(conn)
-    }
+	for {
+		conn, err := listen.Accept()
+		if err != nil {
+			log.Println("accept error: ", err)
+			break
+		}
+		go Handle(conn)
+	}
 }

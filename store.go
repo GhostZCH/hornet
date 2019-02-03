@@ -76,10 +76,23 @@ func (s *Store) clear() {
 			}
 		}
 
-		if min != 0 {
-			os.Remove(fmt.Sprintf(DATA_FMT, s.path, min))
-			delete(s.blocks, min)
+		if min == 0 {
+			continue
 		}
+
+		if err := os.Remove(fmt.Sprintf(DATA_FMT, s.path, min)) {
+			panic(err)
+		}
+		delete(s.blocks, min)
+
+		for _, dmap := range s.meta {
+			for id, item := range dmap {
+				if item.Block == min {
+					delete(dmap, id)
+				}
+			}
+		}
+
 	}
 }
 
