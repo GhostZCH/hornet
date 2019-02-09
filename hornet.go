@@ -1,46 +1,59 @@
 package main
 
 import (
-	"log"
-	"net"
-	"runtime"
+	"flag"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
-var cache = Store{}
+func parseArgs() string {
+	path := flag.String("conf", "hornet.yaml", "conf file path")
+	flag.Parse()
+	return *path
+}
 
-func Handle(conn net.Conn) {
-	defer conn.Close()
+func handleSignal(svr *Server) {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGUSR2, syscall.SIGINT, syscall.SIGTERM)
 
 	for {
-		recv := make([]byte, 4096)
-		n, err := conn.Read(recv)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+		sig := <-sigs
+		Warn("get signal ", sig)
 
-		r := Req{}
-		r.Parse(recv[:n])
-		conn.Write(cache.Get(r.Dir, r.ID))
+		switch sig {
+		case syscall.SIGTERM:
+			fallthrough
+		case syscall.SIGINT:
+			svr.Stop()
+			break
+		case syscall.SIGUSR2:
+			InitLog()
+		}
 	}
 }
 
 func main() {
-	runtime.GOMAXPROCS(8)
-	cache.Init("test/", 4096, 4)
+	path := parseArgs()
 
-	listen, err := net.Listen("tcp", ":8080")
-	if err != nil {
-		log.Println("listen error: ", err)
-		return
-	}
+	LoadConf(path, path+".local")
+	InitLog()
 
-	for {
-		conn, err := listen.Accept()
-		if err != nil {
-			log.Println("accept error: ", err)
-			break
+	Warn(GConfig)
+
+	defer func() {
+		if err := recover(); err != nil {
+			Error(err)
 		}
-		go Handle(conn)
-	}
+	}()
+
+	store := new(Store)
+	store.Init()
+
+	svr := new(Server)
+	svr.Init(store)
+	go handleSignal(svr)
+
+	svr.Forever()
+	store.Close()
 }

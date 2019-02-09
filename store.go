@@ -80,7 +80,7 @@ func (s *Store) clear() {
 			continue
 		}
 
-		if err := os.Remove(fmt.Sprintf(DATA_FMT, s.path, min)) {
+		if err := os.Remove(fmt.Sprintf(DATA_FMT, s.path, min)); err != nil {
 			panic(err)
 		}
 		delete(s.blocks, min)
@@ -96,12 +96,12 @@ func (s *Store) clear() {
 	}
 }
 
-func (s *Store) Init(path string, blockSize int, blockCount int) {
-	s.path = path
-	s.curOff = blockSize
+func (s *Store) Init() {
+	s.path = GConfig["store.path"].(string)
+	s.curOff = GConfig["store.block.size"].(int)
 	s.curBlock = 0
-	s.blockCount = blockCount
-	s.blockSize = blockSize
+	s.blockCount = GConfig["store.block.count"].(int)
+	s.blockSize = GConfig["store.block.size"].(int)
 	s.blocks = map[uint64][]byte{}
 	s.meta = map[uint64]map[uint64]item{}
 
@@ -128,7 +128,7 @@ func (s *Store) Init(path string, blockSize int, blockCount int) {
 			s.curBlock = b.ID
 		}
 
-		var name = fmt.Sprintf(DATA_FMT, path, b.ID)
+		var name = fmt.Sprintf(DATA_FMT, s.path, b.ID)
 		s.blocks[b.ID] = openMmap(name, int(b.Size))
 	}
 	s.clear()
@@ -232,18 +232,21 @@ func (s *Store) Del(dir, id uint64) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
+	if dir == 0 {
+		s.meta = make(map[uint64]map[uint64]item)
+		return
+	}
+
+	if id == 0 {
+		if _, ok := s.meta[dir]; ok {
+			delete(s.meta, dir)
+		}
+		return
+	}
+
 	if dirMap, ok := s.meta[dir]; ok {
 		if _, ok := dirMap[id]; ok {
 			delete(dirMap, id)
 		}
-	}
-}
-
-func (s *Store) Purge(dir uint64) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	if _, ok := s.meta[dir]; ok {
-		delete(s.meta, dir)
 	}
 }
