@@ -1,0 +1,14 @@
+listen: :8080
+runlog.path: /tmp/message
+runlog.level: info
+accesslog.path: /tmp/access
+store.path: /tmp/
+store.block.size: 1024000
+store.block.count: 4
+sock.req.timeout: 3
+sock.idle.timeout: 60
+http.header.maxlen: 4096
+http.header.discard:
+  - Host
+  - User-Agent
+http.body.bufsize: 65536
