@@ -7,6 +7,8 @@ import (
 	"syscall"
 )
 
+const VERSION int64 = 1000000
+
 func parseArgs() string {
 	path := flag.String("conf", "hornet.yaml", "conf file path")
 	flag.Parse()

@@ -9,7 +9,8 @@ import (
 	"syscall"
 )
 
-const MAGIC int64 = 1234567890
+const MAGIC int64 = 6000576210161258312 //HORNETFS
+const META_VERSION int64 = VERSION - VERSION%1000000
 const DATA_FMT string = "%s/%032x.dat"
 const META_FMT string = "%s/meta"
 
@@ -27,15 +28,17 @@ type diskBlock struct {
 }
 
 type metaHead struct {
-	Magic  int64
-	Blocks int64
-	Items  int64
+	Magic   int64
+	Version int64
+	Blocks  int64
+	Items   int64
 }
 
-type item struct {
-	Block uint64
-	Off   int
-	Size  int
+type Item struct {
+	Block   uint64
+	Off     int
+	Size    int
+	Putting bool
 }
 
 type Store struct {
@@ -46,7 +49,7 @@ type Store struct {
 	path       string
 	lock       sync.RWMutex
 	blocks     map[uint64][]byte
-	meta       map[uint64]map[uint64]item
+	meta       map[uint64]map[uint64]*Item
 }
 
 func openMmap(path string, size int) []byte {
@@ -83,6 +86,7 @@ func (s *Store) clear() {
 		if err := os.Remove(fmt.Sprintf(DATA_FMT, s.path, min)); err != nil {
 			panic(err)
 		}
+		syscall.Munmap(s.blocks[min])
 		delete(s.blocks, min)
 
 		for _, dmap := range s.meta {
@@ -92,7 +96,6 @@ func (s *Store) clear() {
 				}
 			}
 		}
-
 	}
 }
 
@@ -103,7 +106,7 @@ func (s *Store) Init() {
 	s.blockCount = GConfig["store.block.count"].(int)
 	s.blockSize = GConfig["store.block.size"].(int)
 	s.blocks = map[uint64][]byte{}
-	s.meta = map[uint64]map[uint64]item{}
+	s.meta = make(map[uint64]map[uint64]*Item)
 
 	var meta = fmt.Sprintf(META_FMT, s.path)
 	var f, e = os.Open(meta)
@@ -117,7 +120,7 @@ func (s *Store) Init() {
 		panic(err)
 	}
 
-	if h.Magic != MAGIC {
+	if h.Magic != MAGIC || h.Version != META_VERSION {
 		return
 	}
 
@@ -139,11 +142,12 @@ func (s *Store) Init() {
 	for _, ditem := range items {
 		var ok bool
 		if _, ok = s.meta[ditem.Dir]; !ok {
-			s.meta[ditem.Dir] = map[uint64]item{}
+			s.meta[ditem.Dir] = make(map[uint64]*Item)
 		}
 
 		if _, ok = s.blocks[ditem.Block]; ok {
-			s.meta[ditem.Dir][ditem.ID] = item{ditem.Block, int(ditem.Off), int(ditem.Size)}
+			item := Item{ditem.Block, int(ditem.Off), int(ditem.Size), false}
+			s.meta[ditem.Dir][ditem.ID] = &item
 		}
 	}
 
@@ -154,7 +158,7 @@ func (s *Store) Init() {
 func (s *Store) Close() {
 	var buf = new(bytes.Buffer)
 
-	var h = metaHead{Magic: MAGIC}
+	var h = metaHead{Magic: MAGIC, Version: META_VERSION}
 	h.Blocks = int64(len(s.blocks))
 	for _, item := range s.meta {
 		h.Items += int64(len(item))
@@ -189,7 +193,15 @@ func (s *Store) Close() {
 	f.Write(t)
 }
 
-func (s *Store) Add(dir, id uint64, size int) (data []byte) {
+func (s *Store) Add(dir, id uint64, size int, force bool) (data []byte, item *Item) {
+	if data := s.Get(dir, id); data != nil {
+		if !force {
+			s.Del(dir, id)
+		} else {
+			return nil, nil
+		}
+	}
+
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -204,13 +216,13 @@ func (s *Store) Add(dir, id uint64, size int) (data []byte) {
 	data = s.blocks[s.curBlock][s.curOff : s.curOff+size]
 
 	if _, ok := s.meta[dir]; !ok {
-		s.meta[dir] = map[uint64]item{}
+		s.meta[dir] = make(map[uint64]*Item)
 	}
 
-	s.meta[dir][id] = item{s.curBlock, s.curOff, size}
+	s.meta[dir][id] = &Item{s.curBlock, s.curOff, size, true}
 	s.curOff += size
 
-	return data
+	return data, s.meta[dir][id]
 }
 
 func (s *Store) Get(dir, id uint64) []byte {
@@ -218,7 +230,7 @@ func (s *Store) Get(dir, id uint64) []byte {
 	defer s.lock.RUnlock()
 
 	if dir, ok := s.meta[dir]; ok {
-		if item, ok := dir[id]; ok {
+		if item, ok := dir[id]; ok && !item.Putting {
 			if block, ok := s.blocks[item.Block]; ok {
 				return block[item.Off : item.Off+item.Size]
 			}
@@ -233,7 +245,7 @@ func (s *Store) Del(dir, id uint64) {
 	defer s.lock.Unlock()
 
 	if dir == 0 {
-		s.meta = make(map[uint64]map[uint64]item)
+		s.meta = make(map[uint64]map[uint64]*Item)
 		return
 	}
 

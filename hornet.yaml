@@ -11,4 +11,5 @@ http.header.maxlen: 4096
 http.header.discard:
   - Host
   - User-Agent
+  - Expect
 http.body.bufsize: 65536

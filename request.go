@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"net"
 	"regexp"
 	"strconv"
+	"time"
 )
 
 var HTTP_SPLITER = []byte("\r\n")
@@ -18,12 +21,23 @@ var REQLINE_REG = regexp.MustCompile("^(GET|POST|DEL) /([0-9]+)/([0-9]+) HTTP/1.
 var HEADR_REG = regexp.MustCompile("(.*): (.*)\r\n")
 
 type Request struct {
-	Method  string
-	Dir     uint64
-	ID      uint64
-	Err     error
-	Headers [][][]byte
-	// remoteaddr, begintime, deltetime,
+	Method    string
+	Dir       uint64
+	ID        uint64
+	Err       error
+	Headers   [][][]byte
+	Addr      string
+	Time      int64
+	DetalTime int64
+	Conn      *net.TCPConn
+}
+
+func NewRequest(conn *net.TCPConn) (r *Request) {
+	r = new(Request)
+	r.Conn = conn
+	r.Time = time.Now().UnixNano() / 1e6 // ms
+	r.Method = "-"
+	return r
 }
 
 func (r *Request) ParseReqLine(buf []byte) (tail []byte) {
@@ -78,4 +92,12 @@ func (r *Request) GenerateHeader(buf *bytes.Buffer) {
 			buf.Write(h[0])
 		}
 	}
+}
+
+func (r *Request) Finish() {
+	r.DetalTime = time.Now().UnixNano()/1e6 - r.Time
+}
+
+func (r *Request) String() string {
+	return fmt.Sprint(r.Time, r.DetalTime, r.Dir, r.ID, r.Method, " ", r.Conn.RemoteAddr(), r.Err, "\n")
 }

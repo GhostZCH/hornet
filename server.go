@@ -47,9 +47,13 @@ func (s *Server) Stop() {
 }
 
 func (s *Server) handlerReq(conn *net.TCPConn, recv []byte, err error) bool {
-	r := Request{}
+	r := NewRequest(conn)
 
-	defer Access(&r)
+	defer func() {
+		r.Finish()
+		Access(r)
+	}()
+
 	if err != nil {
 		r.Err = err
 		return false
@@ -94,7 +98,11 @@ func (s *Server) handlerReq(conn *net.TCPConn, recv []byte, err error) bool {
 		if cl, err := strconv.ParseInt(string(clh[2]), 10, 64); err == nil {
 			h := headerBuf.Bytes()
 			l := int(cl) + len(h)
-			buf := s.store.Add(r.Dir, r.ID, l)
+			buf, item := s.store.Add(r.Dir, r.ID, l, false)
+			if buf == nil {
+				conn.Write(SPC_RSP_200)
+				return true
+			}
 
 			copy(buf, h)
 			n := len(h)
@@ -106,12 +114,14 @@ func (s *Server) handlerReq(conn *net.TCPConn, recv []byte, err error) bool {
 			for n < l {
 				if rn, err := conn.Read(recv); err != nil {
 					r.Err = err
+					s.store.Del(r.Dir, r.ID)
 					return false
 				} else {
 					copy(buf[n:], recv[:rn])
 					n += rn
 				}
 			}
+			item.Putting = false
 		} else {
 			r.Err = err
 			return false

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
@@ -8,12 +9,13 @@ import (
 )
 
 type Logger struct {
-	info       *log.Logger
-	warn       *log.Logger
-	err        *log.Logger
-	access     *log.Logger
-	runFile    *os.File
-	accessFile *os.File
+	info         *log.Logger
+	warn         *log.Logger
+	err          *log.Logger
+	access       chan string
+	accessWriter *bufio.Writer
+	accessFile   *os.File
+	runFile      *os.File
 }
 
 var logger *Logger
@@ -30,6 +32,7 @@ func InitLog() {
 			logger.runFile.Close()
 		}
 		if logger.accessFile != nil {
+			logger.accessWriter.Flush()
 			logger.accessFile.Close()
 		}
 		logger.info = nil
@@ -71,8 +74,16 @@ func InitLog() {
 	if err != nil {
 		panic(err)
 	}
+	logger.access = make(chan string, 64)
+	logger.accessWriter = bufio.NewWriter(logger.accessFile)
 
-	logger.access = log.New(logger.accessFile, "", log.LstdFlags)
+	go access()
+}
+
+func access() {
+	for {
+		logger.accessWriter.WriteString(<-logger.access)
+	}
 }
 
 func Info(v ...interface{}) {
@@ -95,7 +106,7 @@ func Error(v ...interface{}) {
 
 func Access(r *Request) {
 	if logger.access != nil {
-		logger.access.Println(r)
+		logger.access <- r.String()
 	}
 }
 
