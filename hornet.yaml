@@ -2,9 +2,11 @@ listen: :8080
 runlog.path: /tmp/message
 runlog.level: info
 accesslog.path: /tmp/access
+accesslog.buf: 4096
 store.path: /tmp/
-store.block.size: 1024000
-store.block.count: 4
+store.cap: 10240000
+store.watermark: 0.9
+store.blocksize: 1024000
 sock.req.timeout: 3
 sock.idle.timeout: 60
 http.header.maxlen: 4096

@@ -22,50 +22,48 @@ func (s *Server) Init(store *Store) {
 
 func (s *Server) Forever() {
 	listen, err := net.Listen("tcp", GConfig["listen"].(string))
-	if err != nil {
-		panic(err)
-	}
+	AssertSuccess(err)
 
 	s.listen = listen.(*net.TCPListener)
 
-	Warn("server start handle requests")
+	Lwarn("server start handle requests")
 	for s.run {
 		conn, err := s.listen.AcceptTCP()
 		if err != nil {
-			Error(err)
+			Lerror(err)
 			continue
 		}
-		Info(conn)
+		Linfo(conn)
 		go s.handleConn(conn)
 	}
 }
 
 func (s *Server) Stop() {
-	Warn("server stoping ...")
+	Lwarn("server stoping ...")
 	s.run = false
 	s.listen.Close()
 }
 
-func (s *Server) handlerReq(conn *net.TCPConn, recv []byte, err error) bool {
+func (s *Server) handlerReq(conn *net.TCPConn, recv []byte, err error) (ok bool) {
 	r := NewRequest(conn)
 
 	defer func() {
-		r.Finish()
-		Access(r)
+		var err error
+		if e := recover(); e != nil {
+			err = e.(error)
+		}
+		r.Finish(err)
+		Laccess(r)
+		ok = err == nil
 	}()
 
-	if err != nil {
-		r.Err = err
-		return false
-	}
+	AssertSuccess(err)
 
-	if recv = r.ParseReqLine(recv); r.Err != nil {
-		return false
-	}
+	recv = r.ParseReqLine(recv)
 
 	switch r.Method {
 	case "GET":
-		if rsp := s.store.Get(r.Dir, r.ID); rsp == nil {
+		if item, rsp := s.store.Get(r.Dir, r.ID); rsp == nil || item.Putting {
 			conn.Write(SPC_RSP_404)
 		} else {
 			conn.Write(rsp)
@@ -76,6 +74,11 @@ func (s *Server) handlerReq(conn *net.TCPConn, recv []byte, err error) bool {
 		conn.Write(SPC_RSP_200)
 
 	case "POST":
+		if item, _ := s.store.Get(r.Dir, r.ID); item != nil {
+			conn.Write(SPC_RSP_200)
+			return true
+		}
+
 		if recv = r.ParseHeaders(recv); r.Err != nil {
 			return false
 		}
@@ -91,42 +94,33 @@ func (s *Server) handlerReq(conn *net.TCPConn, recv []byte, err error) bool {
 
 		clh := r.FindHeader([]byte("Content-Length"))
 		if clh == nil {
-			r.Err = errors.New("NO_CONTENT_LENGTH")
-			return false
+			panic(errors.New("NO_CONTENT_LENGTH"))
 		}
 
-		if cl, err := strconv.ParseInt(string(clh[2]), 10, 64); err == nil {
-			h := headerBuf.Bytes()
-			l := int(cl) + len(h)
-			buf, item := s.store.Add(r.Dir, r.ID, l, false)
-			if buf == nil {
-				conn.Write(SPC_RSP_200)
-				return true
+		cl, err := strconv.ParseInt(string(clh[2]), 10, 64)
+		AssertSuccess(err)
+
+		h := headerBuf.Bytes()
+		l := int(cl) + len(h)
+		buf, item := s.store.Add(r.Dir, r.ID, l)
+
+		copy(buf, h)
+		n := len(h)
+
+		copy(buf[n:], recv)
+		n += len(recv)
+
+		recv := make([]byte, GConfig["http.body.bufsize"].(int))
+		for n < l {
+			if rn, err := conn.Read(recv); err != nil {
+				s.store.Del(r.Dir, r.ID)
+				panic(err)
+			} else {
+				copy(buf[n:], recv[:rn])
+				n += rn
 			}
-
-			copy(buf, h)
-			n := len(h)
-
-			copy(buf[n:], recv)
-			n += len(recv)
-
-			recv := make([]byte, GConfig["http.body.bufsize"].(int))
-			for n < l {
-				if rn, err := conn.Read(recv); err != nil {
-					r.Err = err
-					s.store.Del(r.Dir, r.ID)
-					return false
-				} else {
-					copy(buf[n:], recv[:rn])
-					n += rn
-				}
-			}
-			item.Putting = false
-		} else {
-			r.Err = err
-			return false
 		}
-
+		item.Putting = false
 		conn.Write(SPC_RSP_201)
 	}
 
@@ -136,7 +130,7 @@ func (s *Server) handlerReq(conn *net.TCPConn, recv []byte, err error) bool {
 func (s *Server) handleConn(conn *net.TCPConn) {
 	defer func() {
 		if err := recover(); err != nil {
-			Error(err)
+			Lerror(err)
 		}
 		conn.Close()
 	}()

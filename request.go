@@ -43,8 +43,7 @@ func NewRequest(conn *net.TCPConn) (r *Request) {
 func (r *Request) ParseReqLine(buf []byte) (tail []byte) {
 	match := REQLINE_REG.FindSubmatch(buf)
 	if len(match) == 0 {
-		r.Err = errors.New("HEADER_ERROR")
-		return nil
+		panic(errors.New("HEADER_ERROR"))
 	}
 
 	r.Method = string(match[1])
@@ -63,8 +62,7 @@ func (r *Request) ParseHeaders(buf []byte) (tail []byte) {
 		tail = buf[l:]
 	}
 	if !bytes.HasPrefix(tail, HTTP_SPLITER) {
-		r.Err = errors.New("HEADER_TOO_LARGE")
-		return nil
+		panic(errors.New("HEADER_TOO_LARGE"))
 	}
 	return tail[2:]
 }
@@ -94,10 +92,11 @@ func (r *Request) GenerateHeader(buf *bytes.Buffer) {
 	}
 }
 
-func (r *Request) Finish() {
+func (r *Request) Finish(err error) {
+	r.Err = err
 	r.DetalTime = time.Now().UnixNano()/1e6 - r.Time
 }
 
 func (r *Request) String() string {
-	return fmt.Sprint(r.Time, r.DetalTime, r.Dir, r.ID, r.Method, " ", r.Conn.RemoteAddr(), r.Err, "\n")
+	return fmt.Sprintf("%v %v %v %v %v %v %v\n", r.Time, r.DetalTime, r.Dir, r.ID, r.Method, r.Conn.RemoteAddr(), r.Err)
 }

@@ -80,9 +80,14 @@
 - [x] store加入
 - [x] http功能封装
 - [x] 性能测试
-- [] 日志输出(access需要完善)
-- [] 代码清理
-- [] 基础功测试 (DEL 没测试，重启后的功能)
+- [x] 基础功测试
+- [x] 支持大于blockSize的文件
+- [x] 日志输出
+- [] 特殊配置提前处理
+- [] server 逻辑剥离增加request handler
+- [] expires, maxage
+- [] 304
+- [] 支持range
 - [] 回源功能
 
 

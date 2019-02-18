@@ -21,7 +21,7 @@ func handleSignal(svr *Server) {
 
 	for {
 		sig := <-sigs
-		Warn("get signal ", sig)
+		Lwarn("get signal ", sig)
 
 		switch sig {
 		case syscall.SIGTERM:
@@ -41,11 +41,11 @@ func main() {
 	LoadConf(path, path+".local")
 	InitLog()
 
-	Warn(GConfig)
+	Lwarn(GConfig)
 
 	defer func() {
 		if err := recover(); err != nil {
-			Error(err)
+			Lerror(err)
 		}
 	}()
 

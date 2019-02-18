@@ -24,6 +24,12 @@ var levelMap = map[string]int{"info": 1, "warn": 2, "error": 3}
 
 var GConfig = make(map[string]interface{})
 
+func AssertSuccess(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
 func InitLog() {
 	var err error
 
@@ -46,9 +52,7 @@ func InitLog() {
 	// init run log
 	path := GConfig["runlog.path"].(string)
 	logger.runFile, err = os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		panic(err)
-	}
+	AssertSuccess(err)
 
 	var level = GConfig["runlog.level"].(string)
 	var lv, ok = levelMap[level]
@@ -71,61 +75,55 @@ func InitLog() {
 	// init access log
 	path = GConfig["accesslog.path"].(string)
 	logger.accessFile, err = os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		panic(err)
-	}
-	logger.access = make(chan string, 64)
-	logger.accessWriter = bufio.NewWriter(logger.accessFile)
+	AssertSuccess(err)
 
-	go access()
+	bufsize := GConfig["accesslog.buf"].(int)
+	logger.access = make(chan string, 64)
+	logger.accessWriter = bufio.NewWriterSize(logger.accessFile, bufsize)
+
+	go writeAccess()
 }
 
-func access() {
+func writeAccess() {
 	for {
 		logger.accessWriter.WriteString(<-logger.access)
 	}
 }
 
-func Info(v ...interface{}) {
+func Linfo(v ...interface{}) {
 	if logger.info != nil {
 		logger.info.Println(v...)
 	}
 }
 
-func Warn(v ...interface{}) {
+func Lwarn(v ...interface{}) {
 	if logger.warn != nil {
 		logger.warn.Println(v...)
 	}
 }
 
-func Error(v ...interface{}) {
+func Lerror(v ...interface{}) {
 	if logger.err != nil {
 		logger.err.Println(v...)
 	}
 }
 
-func Access(r *Request) {
+func Laccess(r *Request) {
 	if logger.access != nil {
 		logger.access <- r.String()
 	}
 }
 
 func readYaml(path string) (conf map[string]interface{}) {
-	var err error
-	var content []byte
-
-	if content, err = ioutil.ReadFile(path); err != nil {
+	if content, err := ioutil.ReadFile(path); err != nil {
 		if os.IsNotExist(err) {
 			return conf
 		}
 		panic(err)
+	} else {
+		AssertSuccess(yaml.Unmarshal(content, &conf))
+		return conf
 	}
-
-	if err = yaml.Unmarshal(content, &conf); err != nil {
-		panic(err)
-	}
-
-	return conf
 }
 
 func LoadConf(path string, localPath string) {

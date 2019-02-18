@@ -7,24 +7,20 @@ import (
 	"os"
 	"sync"
 	"syscall"
+	"time"
 )
 
 const MAGIC int64 = 6000576210161258312 //HORNETFS
 const META_VERSION int64 = VERSION - VERSION%1000000
-const DATA_FMT string = "%s/%032x.dat"
+const DATA_FMT string = "%s/%016x.dat"
 const META_FMT string = "%s/meta"
 
 type diskItem struct {
 	Dir   uint64
 	ID    uint64
-	Block uint64
+	Block int64
 	Off   int64
 	Size  int64
-}
-
-type diskBlock struct {
-	ID   uint64
-	Size int64
 }
 
 type metaHead struct {
@@ -35,21 +31,23 @@ type metaHead struct {
 }
 
 type Item struct {
-	Block   uint64
+	Block   int64
 	Off     int
 	Size    int
 	Putting bool
 }
 
 type Store struct {
-	blockSize  int
-	blockCount int
-	curOff     int
-	curBlock   uint64
-	path       string
-	lock       sync.RWMutex
-	blocks     map[uint64][]byte
-	meta       map[uint64]map[uint64]*Item
+	cap       int
+	size      int
+	blockSize int
+	curOff    int
+	curBlock  int64
+	watermark float64
+	path      string
+	lock      sync.RWMutex
+	blocks    map[int64][]byte
+	meta      map[uint64]map[uint64]*Item
 }
 
 func openMmap(path string, size int) []byte {
@@ -67,12 +65,13 @@ func openMmap(path string, size int) []byte {
 		panic(me)
 	}
 
+	Lwarn("mmap ", path, size)
 	return data
 }
 
 func (s *Store) clear() {
-	for len(s.blocks) > s.blockCount {
-		var min uint64 = 0
+	for float64(s.size) > s.watermark*float64(s.cap) {
+		var min int64 = 0
 		for id, _ := range s.blocks {
 			if id < min || min == 0 {
 				min = id
@@ -83,11 +82,22 @@ func (s *Store) clear() {
 			continue
 		}
 
-		if err := os.Remove(fmt.Sprintf(DATA_FMT, s.path, min)); err != nil {
+		path := fmt.Sprintf(DATA_FMT, s.path, min)
+		size := len(s.blocks[min])
+		s.size -= size
+
+		Lwarn("delete block ", path, size, s.size)
+
+		if err := os.Remove(path); err != nil {
 			panic(err)
 		}
-		syscall.Munmap(s.blocks[min])
-		delete(s.blocks, min)
+
+		go func(b []byte) {
+			// wait for request which use buf finish
+			timeout := time.Duration(GConfig["sock.req.timeout"].(int))
+			time.Sleep(time.Second*timeout + 1)
+			syscall.Munmap(b)
+		}(s.blocks[min])
 
 		for _, dmap := range s.meta {
 			for id, item := range dmap {
@@ -96,49 +106,67 @@ func (s *Store) clear() {
 				}
 			}
 		}
+		delete(s.blocks, min)
 	}
+}
+
+func (s *Store) addBlock(size int) {
+	s.curBlock = time.Now().UnixNano()
+	s.curOff = 0
+	var name = fmt.Sprintf(DATA_FMT, s.path, s.curBlock)
+	s.blocks[s.curBlock] = openMmap(name, size)
+	s.size += size
+	s.clear()
 }
 
 func (s *Store) Init() {
 	s.path = GConfig["store.path"].(string)
-	s.curOff = GConfig["store.block.size"].(int)
-	s.curBlock = 0
-	s.blockCount = GConfig["store.block.count"].(int)
-	s.blockSize = GConfig["store.block.size"].(int)
-	s.blocks = map[uint64][]byte{}
+	s.watermark = GConfig["store.watermark"].(float64)
+	s.cap = GConfig["store.cap"].(int)
+	s.blockSize = GConfig["store.blocksize"].(int)
+
+	s.size = 0
+	s.curOff = s.blockSize
+	s.blocks = map[int64][]byte{}
 	s.meta = make(map[uint64]map[uint64]*Item)
 
-	var meta = fmt.Sprintf(META_FMT, s.path)
-	var f, e = os.Open(meta)
-	if e != nil {
-		return
+	var mpath = fmt.Sprintf(META_FMT, s.path)
+	var mfile, err = os.Open(mpath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		panic(err)
 	}
 
 	var h metaHead
-	err := binary.Read(f, binary.LittleEndian, &h)
-	if err != nil {
+	if err := binary.Read(mfile, binary.LittleEndian, &h); err != nil {
 		panic(err)
 	}
+
+	defer mfile.Close()
+	defer os.Remove(mpath)
 
 	if h.Magic != MAGIC || h.Version != META_VERSION {
 		return
 	}
 
-	var blocks = make([]diskBlock, h.Blocks)
-	binary.Read(f, binary.LittleEndian, blocks)
-	for _, b := range blocks {
-		if b.ID > s.curBlock {
-			s.curBlock = b.ID
-		}
+	blocks := make([]int64, h.Blocks)
+	binary.Read(mfile, binary.LittleEndian, blocks)
 
-		var name = fmt.Sprintf(DATA_FMT, s.path, b.ID)
-		s.blocks[b.ID] = openMmap(name, int(b.Size))
+	for _, b := range blocks {
+		dpath := fmt.Sprintf(DATA_FMT, s.path, b)
+		if st, err := os.Stat(dpath); err != nil {
+			Lerror(err)
+		} else {
+			s.blocks[b] = openMmap(dpath, int(st.Size()))
+			s.size += int(st.Size())
+		}
 	}
 	s.clear()
-	s.curBlock += 1
 
 	var items = make([]diskItem, h.Items)
-	binary.Read(f, binary.LittleEndian, items)
+	binary.Read(mfile, binary.LittleEndian, items)
 	for _, ditem := range items {
 		var ok bool
 		if _, ok = s.meta[ditem.Dir]; !ok {
@@ -146,71 +174,59 @@ func (s *Store) Init() {
 		}
 
 		if _, ok = s.blocks[ditem.Block]; ok {
-			item := Item{ditem.Block, int(ditem.Off), int(ditem.Size), false}
-			s.meta[ditem.Dir][ditem.ID] = &item
+			item := &Item{ditem.Block, int(ditem.Off), int(ditem.Size), false}
+			s.meta[ditem.Dir][ditem.ID] = item
 		}
 	}
-
-	f.Close()
-	os.Remove(meta)
 }
 
 func (s *Store) Close() {
 	var buf = new(bytes.Buffer)
-
 	var h = metaHead{Magic: MAGIC, Version: META_VERSION}
+
 	h.Blocks = int64(len(s.blocks))
 	for _, item := range s.meta {
 		h.Items += int64(len(item))
 	}
-	if e := binary.Write(buf, binary.LittleEndian, h); e != nil {
-		panic(e)
-	}
+	AssertSuccess(binary.Write(buf, binary.LittleEndian, h))
 
-	for id, blk := range s.blocks {
-		var dBlock = diskBlock{id, int64(len(blk))}
-		if e := binary.Write(buf, binary.LittleEndian, dBlock); e != nil {
-			panic(e)
-		}
+	for id, _ := range s.blocks {
+		AssertSuccess(binary.Write(buf, binary.LittleEndian, id))
 	}
 
 	for d, items := range s.meta {
 		for id, item := range items {
-			var ditem = diskItem{id, d, item.Block, int64(item.Off), int64(item.Size)}
-			if e := binary.Write(buf, binary.LittleEndian, ditem); e != nil {
-				panic(e)
-			}
+			ditem := diskItem{d, id, item.Block, int64(item.Off), int64(item.Size)}
+			AssertSuccess(binary.Write(buf, binary.LittleEndian, ditem))
 		}
 	}
 
-	var meta = fmt.Sprintf(META_FMT, s.path)
-	var f, e = os.OpenFile(meta, os.O_RDWR|os.O_CREATE, 0600)
-	if e != nil {
-		panic(e)
+	mpath := fmt.Sprintf(META_FMT, s.path)
+	mpath_tmp := mpath + ".tmp"
+
+	mfile, err := os.OpenFile(mpath_tmp, os.O_RDWR|os.O_CREATE, 0600)
+	AssertSuccess(err)
+
+	defer mfile.Close()
+
+	d := buf.Bytes()
+	if n, err := mfile.Write(d); n == len(d) && err == nil {
+		if os.Rename(mpath_tmp, mpath) == nil {
+			Lwarn("store closed successed")
+		}
 	}
-	defer f.Close()
-	var t = buf.Bytes()
-	f.Write(t)
 }
 
-func (s *Store) Add(dir, id uint64, size int, force bool) (data []byte, item *Item) {
-	if data := s.Get(dir, id); data != nil {
-		if !force {
-			s.Del(dir, id)
-		} else {
-			return nil, nil
-		}
-	}
-
+func (s *Store) Add(dir, id uint64, size int) (data []byte, item *Item) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
+	if size > s.blockSize {
+		s.addBlock(size)
+	}
+
 	if size+s.curOff > s.blockSize {
-		s.curBlock += 1
-		s.curOff = 0
-		var name = fmt.Sprintf(DATA_FMT, s.path, s.curBlock)
-		s.blocks[s.curBlock] = openMmap(name, s.blockSize)
-		s.clear()
+		s.addBlock(s.blockSize)
 	}
 
 	data = s.blocks[s.curBlock][s.curOff : s.curOff+size]
@@ -225,19 +241,17 @@ func (s *Store) Add(dir, id uint64, size int, force bool) (data []byte, item *It
 	return data, s.meta[dir][id]
 }
 
-func (s *Store) Get(dir, id uint64) []byte {
+func (s *Store) Get(dir, id uint64) (*Item, []byte) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
 	if dir, ok := s.meta[dir]; ok {
 		if item, ok := dir[id]; ok && !item.Putting {
-			if block, ok := s.blocks[item.Block]; ok {
-				return block[item.Off : item.Off+item.Size]
-			}
+			return item, s.blocks[item.Block][item.Off : item.Off+item.Size]
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
 func (s *Store) Del(dir, id uint64) {
