@@ -3,10 +3,13 @@ runlog.path: /tmp/message
 runlog.level: info
 accesslog.path: /tmp/access
 accesslog.buf: 4096
-store.path: /tmp/
-store.cap: 10240000
-store.watermark: 0.9
-store.blocksize: 1024000
+store.disk.path: /tmp/
+store.disk.cap: 10240000
+store.disk.watermark: 0.9
+store.disk.blocksize: 1024000
+store.mem.cap: 10240000
+store.mem.watermark: 0.9
+store.mem.blocksize: 1024000
 sock.req.timeout: 3
 sock.idle.timeout: 60
 http.header.maxlen: 4096
@@ -14,4 +17,5 @@ http.header.discard:
   - Host
   - User-Agent
   - Expect
+  - Content-Length
 http.body.bufsize: 65536

@@ -24,9 +24,9 @@ var levelMap = map[string]int{"info": 1, "warn": 2, "error": 3}
 
 var GConfig = make(map[string]interface{})
 
-func AssertSuccess(err error) {
-	if err != nil {
-		panic(err)
+func Success(args ...interface{}) {
+	if args[-1] != nil {
+		panic(args[-1])
 	}
 }
 
@@ -108,7 +108,7 @@ func Lerror(v ...interface{}) {
 	}
 }
 
-func Laccess(r *Request) {
+func Laccess(t *Transaction) {
 	if logger.access != nil {
 		logger.access <- r.String()
 	}
@@ -133,4 +133,18 @@ func LoadConf(path string, localPath string) {
 	for k, v := range lconf {
 		GConfig[k] = v
 	}
+}
+
+func OpenMmap(path string, size int) []byte {
+	f, fe := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	Success(fe)
+	defer f.Close()
+
+	f.Truncate(int64(size))
+
+	flag := syscall.PROT_READ | syscall.PROT_WRITE
+	data, me := syscall.Mmap(int(f.Fd()), 0, size, flag, syscall.MAP_SHARED)
+	Success(me)
+
+	return data
 }

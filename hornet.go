@@ -38,7 +38,7 @@ func handleSignal(svr *Server) {
 func main() {
 	path := parseArgs()
 
-	LoadConf(path, path+".local")
+	LoadConf(path, "local_"+path)
 	InitLog()
 
 	Lwarn(GConfig)
@@ -49,13 +49,12 @@ func main() {
 		}
 	}()
 
-	store := new(Store)
-	store.Init()
+	s := NewStore()
+	hdls := []Handler{NewRecvHandler(), NewStoreHandler(s), NewSendHandler()}
 
-	svr := new(Server)
-	svr.Init(store)
+	svr := NewServer(hdls)
 	go handleSignal(svr)
 
 	svr.Forever()
-	store.Close()
+	s.Close()
 }
