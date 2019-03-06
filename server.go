@@ -6,20 +6,16 @@ import (
 	"time"
 )
 
-type Handler interface {
-	Handle(t *Transaction) bool
-}
-
 type Server struct {
-	run      bool
-	listen   *net.TCPListener
-	handlers []Handler
+	run    bool
+	store  *Store
+	listen *net.TCPListener
 }
 
-func NewServer(handlers []Handler) (s *Server) {
+func NewServer(store *Store) (s *Server) {
 	s = new(Server)
 	s.run = true
-	s.handlers = handlers
+	s.store = store
 	return s
 }
 
@@ -38,6 +34,7 @@ func (s *Server) Forever() {
 		}
 		go s.handleConn(conn)
 	}
+	// TODO wait for all request finished
 }
 
 func (s *Server) Stop() {
@@ -46,8 +43,8 @@ func (s *Server) Stop() {
 	s.listen.Close()
 }
 
-func (s *Server) handlerReq(conn *net.TCPConn) (err error) {
-	t := NewTrans(conn)
+func (s *Server) handlerReq(conn *net.TCPConn, recv []byte) (err error) {
+	t := NewTrans(conn, s.store)
 
 	defer func() {
 		if e := recover(); e != nil {
@@ -61,13 +58,7 @@ func (s *Server) handlerReq(conn *net.TCPConn) (err error) {
 
 	setTimeOut(conn, GConfig["sock.req.timeout"].(int))
 
-	for _, h := range s.handlers {
-		// return false if not continue next handler
-		// raise panic if close conn
-		if !h.Handle(t) {
-			break
-		}
-	}
+	t.Handle(recv)
 
 	setTimeOut(conn, GConfig["sock.idle.timeout"].(int))
 	return nil
@@ -75,9 +66,10 @@ func (s *Server) handlerReq(conn *net.TCPConn) (err error) {
 
 func (s *Server) handleConn(conn *net.TCPConn) {
 	defer conn.Close()
+	recv := make([]byte, GConfig["http.header.maxlen"].(int))
 
 	for s.run {
-		if err := s.handlerReq(conn); err != nil {
+		if err := s.handlerReq(conn, recv); err != nil {
 			return
 		}
 	}

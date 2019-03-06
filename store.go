@@ -15,13 +15,12 @@ import (
 const (
 	MAGIC         int64  = 6000576210161258312 //HORNETFS
 	META_VERSION  int64  = VERSION - VERSION%1000000
-	DATA_FMT      string = "%s/%08x-%016x.dat"
+	DATA_FMT      string = "%s/%016x.dat"
 	META_FMT      string = "%s/meta"
 	KEY_HASH_LEN  int    = 16
 	RAW_KEY_LIMIT int    = 128
 	RANGE_BLOCK   int    = 256 * 1024
 	BUCKET        int    = 256
-	TAG_LIMIT     int    = 4
 )
 
 type HKey [KEY_HASH_LEN]byte
@@ -30,8 +29,6 @@ type Key struct {
 	Hash  HKey
 	Range uint32
 }
-
-var EMPTY_KEY = Key{}
 
 type CoreItem struct {
 	ID        Key
@@ -43,7 +40,6 @@ type CoreItem struct {
 	HeadLen   uint32
 	RawKeyLen uint16
 	RawKey    [RAW_KEY_LIMIT]byte
-	Tags      [TAG_LIMIT]uint16
 }
 
 type Item struct {
@@ -66,15 +62,15 @@ type sHeader struct {
 }
 
 type StoreGroup struct {
-	cap       int
-	bSize     int
-	size      int
-	curOff    int
-	curBlock  int64
-	waterMark float64
-	blocks    map[int64][]byte
-	lock      sync.RWMutex
-	path      *string
+	cap      int
+	bSize    int
+	size     int
+	curOff   int
+	curBlock int64
+	blocks   map[int64][]byte
+	lock     sync.RWMutex
+	name     string
+	path     *string
 }
 
 type Store struct {
@@ -89,15 +85,15 @@ func NewStore() (s *Store) {
 	path := GConfig["store.path"].(string)
 
 	s.mem.init(
+		"MEM",
 		GConfig["store.mem.cap"].(int),
 		GConfig["store.mem.blocksize"].(int),
-		GConfig["store.mem.watermark"].(float32),
 		nil)
 
 	s.disk.init(
+		"DISK",
 		GConfig["store.disk.cap"].(int),
 		GConfig["store.disk.blocksize"].(int),
-		GConfig["store.disk.watermark"].(float32),
 		&path)
 
 	for i := 0; i < BUCKET; i++ {
@@ -125,15 +121,15 @@ func NewStore() (s *Store) {
 	binary.Read(mfile, le, blocks)
 
 	for _, b := range blocks {
-		dpath := fmt.Sprintf(DATA_FMT, s.disk.path, b)
-		if st, err := os.Stat(dpath); err != nil {
+		path := fmt.Sprintf(DATA_FMT, s.disk.path, b)
+		if st, err := os.Stat(path); err != nil {
 			Lerror(err)
 		} else {
-			s.disk.blocks[b] = OpenMmap(dpath, int(st.Size()))
+			s.disk.blocks[b] = OpenMmap(path, int(st.Size()))
 			s.disk.size += int(st.Size())
 		}
 	}
-	s.clear(true)
+	s.disk.clear(s.buckets[:])
 
 	items := make([]CoreItem, h.Items)
 	Success(binary.Read(mfile, le, items))
@@ -184,7 +180,7 @@ func (s *Store) Close() {
 	}
 }
 
-func (s *Store) Add(id Key, size int) (data []byte, item *Item) {
+func (s *Store) Add(id Key, size int) (item *Item, data []byte) {
 	item = &Item{true, nil, 0, CoreItem{}}
 	item.Item.ID = id
 	disk := &s.disk
@@ -198,6 +194,7 @@ func (s *Store) Add(id Key, size int) (data []byte, item *Item) {
 	} else if size+disk.curOff > disk.bSize {
 		disk.addBlock(disk.bSize)
 	}
+	disk.clear(s.buckets[:])
 
 	item.Item.Block = disk.curBlock
 	item.Item.Off = int64(disk.curOff)
@@ -219,7 +216,7 @@ func (s *Store) Get(id Key) (*Item, []byte) {
 	defer b.lock.RUnlock()
 
 	if i, ok := b.items[id]; ok && !i.Putting {
-		if _, ok = s.mem.blocks[i.MemBlock]; ok && i.Mem != nil {
+		if i.Mem != nil {
 			return i, i.Mem
 		}
 		end := i.Item.Off + int64(i.Item.HeadLen+i.Item.BodyLen)
@@ -262,14 +259,9 @@ func (s *Store) DelByRawKey(reg *regexp.Regexp) {
 	}
 }
 
-func (s *Store) clear(disk bool) {
-	sg := &s.mem
-	if disk {
-		sg = &s.disk
-	}
-
-	for float64(sg.size) > s.conf.WaterMark*float64(sg.cap) {
-		var min int64 = -1
+func (sg *StoreGroup) clear(buckets []bucket) {
+	for sg.size > sg.cap {
+		min := int64(-1)
 		for id, _ := range sg.blocks {
 			if id < min || min < 0 {
 				min = id
@@ -280,34 +272,37 @@ func (s *Store) clear(disk bool) {
 			panic(errors.New("Can not find block to remove"))
 		}
 
-		path := fmt.Sprintf(DATA_FMT, s.conf.Path, min)
-		size := len(sg.blocks[min])
-		sg.size -= size
+		Lwarn("delete block ", sg.name, sg.size, len(sg.blocks[min]))
 
-		Lwarn("delete block ", path, size, sg.size)
-		Success(os.Remove(path))
+		for i := 0; i < BUCKET; i++ {
+			buckets[i].lock.Lock()
+			for id, item := range buckets[i].items {
+				if item.Item.Block == min {
+					delete(buckets[i].items, id)
+				}
+			}
+			buckets[i].lock.Unlock()
+		}
 
-		go func(b []byte) {
+		sg.size -= len(sg.blocks[min])
+
+		go func(sg *StoreGroup, min int64) {
 			// wait for request which is using buf finish
 			timeout := time.Duration(GConfig["sock.req.timeout"].(int))
 			time.Sleep(time.Second*timeout + 1)
-			syscall.Munmap(b)
-		}(sg.blocks[min])
 
-		for i := 0; i < BUCKET; i++ {
-			b := &s.buckets[i]
-			b.lock.Lock()
-			for id, item := range b.items {
-				if item.Item.Block == min {
-					delete(b.items, id)
-				}
+			sg.lock.Lock()
+			defer sg.lock.Unlock()
+
+			data := sg.blocks[min]
+			delete(sg.blocks, min)
+			if sg.path != nil {
+				path := fmt.Sprintf(DATA_FMT, *sg.path, min)
+				Success(os.Remove(path))
+				syscall.Munmap(data)
 			}
-			b.lock.Unlock()
-		}
 
-		s.lock.Lock()
-		delete(s.disk.blocks, min)
-		s.lock.Unlock()
+		}(sg, min)
 	}
 }
 
@@ -319,19 +314,22 @@ func (s *Store) getBucket(id Key) *bucket {
 func (sg *StoreGroup) addBlock(size int) {
 	sg.curBlock = time.Now().UnixNano()
 	sg.curOff = 0
-	var name = fmt.Sprintf(DATA_FMT, s.conf.Path, sg.curBlock)
-	sg.blocks[sg.curBlock] = OpenMmap(name, size)
+	if sg.path != nil {
+		name := fmt.Sprintf(DATA_FMT, *sg.path, sg.curBlock)
+		sg.blocks[sg.curBlock] = OpenMmap(name, size)
+	} else {
+		sg.blocks[sg.curBlock] = make([]byte, size)
+	}
 	sg.size += size
-	sg.clear()
 }
 
-func (sg *StoreGroup) init(bSize, cap int, waterMark float32, path *string) {
+func (sg *StoreGroup) init(name string, bSize, cap int, path *string) {
+	sg.name = name
 	sg.cap = cap
 	sg.size = 0
 	sg.bSize = bSize
 	sg.curOff = bSize
 	sg.curBlock = 0
-	sg.waterMark = waterMark
 	sg.blocks = map[int64][]byte{}
 	sg.path = path
 }

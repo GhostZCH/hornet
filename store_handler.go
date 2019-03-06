@@ -34,20 +34,12 @@ func (h *StoreHandler) Handle(t *Transaction) bool {
 	}
 }
 
-func (h *StoreHandler) generateHeader(r *Request, buf *bytes.Buffer) {
-	for _, h := range r.Headers {
-		if h != nil {
-			buf.Write(h[0])
-		}
-	}
-}
-
 func (h *StoreHandler) post(t *Transaction) bool {
 	s := h.store
 
 	//TODO write
 
-	if item, _ := s.Get(r.Grp, r.ID); item != nil {
+	if item, _ := s.Get(); item != nil {
 		r.Status = 200
 	}
 

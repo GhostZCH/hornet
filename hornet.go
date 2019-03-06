@@ -50,9 +50,7 @@ func main() {
 	}()
 
 	s := NewStore()
-	hdls := []Handler{NewRecvHandler(), NewStoreHandler(s), NewSendHandler()}
-
-	svr := NewServer(hdls)
+	svr := NewServer(s)
 	go handleSignal(svr)
 
 	svr.Forever()
