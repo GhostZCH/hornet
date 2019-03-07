@@ -31,15 +31,18 @@ type Key struct {
 }
 
 type CoreItem struct {
-	ID        Key
-	Grp       HKey
-	Block     int64
-	Off       int64
-	Expire    uint32
-	BodyLen   uint32
-	HeadLen   uint32
-	RawKeyLen uint16
-	RawKey    [RAW_KEY_LIMIT]byte
+	ID         Key
+	Grp        HKey
+	Block      int64
+	Off        int64
+	Expire     uint32
+	EtagHash   uint32
+	ExpireHash uint32
+	Tags       uint64
+	BodyLen    uint32
+	HeadLen    uint32
+	RawKeyLen  uint32
+	RawKey     [RAW_KEY_LIMIT]byte
 }
 
 type Item struct {
