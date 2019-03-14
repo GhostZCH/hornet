@@ -20,7 +20,8 @@ const (
 	KEY_HASH_LEN  int    = 16
 	RAW_KEY_LIMIT int    = 128
 	RANGE_BLOCK   int    = 256 * 1024
-	BUCKET        int    = 256
+	BUCKET_LIMIT  int    = 256
+	TAG_LIMIT     int    = 4
 )
 
 type HKey [KEY_HASH_LEN]byte
@@ -38,7 +39,8 @@ type CoreItem struct {
 	Expire     uint32
 	EtagHash   uint32
 	ExpireHash uint32
-	Tags       uint64
+	BitMap     uint64
+	Tags       [TAG_LIMIT]uint16
 	BodyLen    uint32
 	HeadLen    uint32
 	RawKeyLen  uint32
@@ -80,7 +82,7 @@ type Store struct {
 	disk    StoreGroup
 	mem     StoreGroup
 	lock    sync.RWMutex
-	buckets [BUCKET]bucket
+	buckets [BUCKET_LIMIT]bucket
 }
 
 func NewStore() (s *Store) {
@@ -99,7 +101,7 @@ func NewStore() (s *Store) {
 		GConfig["store.disk.blocksize"].(int),
 		&path)
 
-	for i := 0; i < BUCKET; i++ {
+	for i := 0; i < BUCKET_LIMIT; i++ {
 		s.buckets[i].items = make(map[Key]*Item)
 	}
 
