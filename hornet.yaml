@@ -1,4 +1,4 @@
-listen: :8080
+server.listen: :8080
 runlog.path: /tmp/message
 runlog.level: info
 accesslog.path: /tmp/access
@@ -19,3 +19,6 @@ http.header.discard:
   - Hornet-Raw-Key
   - Hornet-Group
 http.body.bufsize: 65536
+balancer.addr: 224.0.0.100:6969
+balancer.span_ms: 500
+balancer.fault_ms: 2000

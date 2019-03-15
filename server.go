@@ -20,7 +20,7 @@ func NewServer(store *Store) (s *Server) {
 }
 
 func (s *Server) Forever() {
-	listen, err := net.Listen("tcp", GConfig["listen"].(string))
+	listen, err := net.Listen("tcp", GConfig["server.listen"].(string))
 	Success(err)
 
 	s.listen = listen.(*net.TCPListener)
