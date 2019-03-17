@@ -39,8 +39,9 @@ func (t *Transaction) Finish(err error) {
 }
 
 func (t *Transaction) String() string {
-	return fmt.Sprintf("%v %v %v %v %v %v %v %v\n", t.time, t.delta, t.req.Method,
-		t.req.Path, t.req.Arg, t.conn.RemoteAddr(), t.rsp.Status, t.err)
+	return fmt.Sprintf("%v %v %v %v %v %v %v %v\n",
+		t.time, t.delta, t.req.Method, t.req.Path,
+		t.req.Arg, t.conn.RemoteAddr(), t.rsp.Status, t.err)
 }
 
 func (t *Transaction) get() {

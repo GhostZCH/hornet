@@ -53,6 +53,6 @@ func main() {
 	svr := NewServer(s)
 	go handleSignal(svr)
 
-	svr.Forever()
+	svr.Start()
 	s.Close()
 }

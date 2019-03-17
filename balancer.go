@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net"
 	"sync"
 	"time"
@@ -78,6 +79,23 @@ func (b *Balancer) GetServers() (svrs []string) {
 }
 
 func (b *Balancer) Start() {
-	go b.send()
-	go b.recv()
+	// alone client cluster
+	mode := GConfig["balancer.mode"].(string)
+
+	if mode == "alone" {
+		return
+	}
+
+	if mode == "client" {
+		go b.send()
+		return
+	}
+
+	if mode == "cluster" {
+		go b.send()
+		go b.recv()
+		return
+	}
+
+	panic(errors.New("unknown balance mode " + mode))
 }

@@ -7,9 +7,10 @@ import (
 )
 
 type Server struct {
-	run    bool
-	store  *Store
-	listen *net.TCPListener
+	run      bool
+	store    *Store
+	listen   *net.TCPListener
+	balancer *Balancer
 }
 
 func NewServer(store *Store) (s *Server) {
@@ -19,11 +20,13 @@ func NewServer(store *Store) (s *Server) {
 	return s
 }
 
-func (s *Server) Forever() {
+func (s *Server) Start() {
 	listen, err := net.Listen("tcp", GConfig["server.listen"].(string))
 	Success(err)
-
 	s.listen = listen.(*net.TCPListener)
+
+	s.balancer = NewBalancer()
+	s.balancer.Start()
 
 	Lwarn("server start handle requests")
 	for s.run {
