@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"syscall"
 )
 
 type Logger struct {
@@ -24,10 +25,12 @@ var levelMap = map[string]int{"info": 1, "warn": 2, "error": 3}
 
 var GConfig = make(map[string]interface{})
 
-func Success(args ...interface{}) {
-	if args[-1] != nil {
-		panic(args[-1])
+func Success(args ...interface{}) []interface{} {
+	err := args[len(args)-1]
+	if args[len(args)-1] != nil {
+		panic(err)
 	}
+	return args[:len(args)-1]
 }
 
 func InitLog() {
@@ -52,7 +55,7 @@ func InitLog() {
 	// init run log
 	path := GConfig["runlog.path"].(string)
 	logger.runFile, err = os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	AssertSuccess(err)
+	Success(err)
 
 	var level = GConfig["runlog.level"].(string)
 	var lv, ok = levelMap[level]
@@ -75,7 +78,7 @@ func InitLog() {
 	// init access log
 	path = GConfig["accesslog.path"].(string)
 	logger.accessFile, err = os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	AssertSuccess(err)
+	Success(err)
 
 	bufsize := GConfig["accesslog.buf"].(int)
 	logger.access = make(chan string, 64)
@@ -110,7 +113,7 @@ func Lerror(v ...interface{}) {
 
 func Laccess(t *Transaction) {
 	if logger.access != nil {
-		logger.access <- r.String()
+		logger.access <- t.String()
 	}
 }
 
@@ -121,7 +124,7 @@ func readYaml(path string) (conf map[string]interface{}) {
 		}
 		panic(err)
 	} else {
-		AssertSuccess(yaml.Unmarshal(content, &conf))
+		Success(yaml.Unmarshal(content, &conf))
 		return conf
 	}
 }

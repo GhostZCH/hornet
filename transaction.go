@@ -25,22 +25,22 @@ type Transaction struct {
 
 func NewTrans(conn *net.TCPConn, store *Store) (t *Transaction) {
 	t = new(Transaction)
-	t.recv = recv
 	t.conn = conn
 	t.store = store
-	t.Time = time.Now().UnixNano() / 1e6 // ms
-	t.Req.Init()
-	t.Rsp.Init()
+	t.time = time.Now().UnixNano() / 1e6 // ms
+	t.req.Init()
+	t.rsp.Init()
 	return t
 }
 
 func (t *Transaction) Finish(err error) {
-	t.Err = err
-	t.Detal = time.Now().UnixNano()/1e6 - r.Time
+	t.err = err
+	t.delta = time.Now().UnixNano()/1e6 - t.time
 }
 
 func (t *Transaction) String() string {
-	return fmt.Sprintf("%v %v %v %v %v %v %v %v\n", t.Time, t.Detal, t.Req.Method, t.Req.Path, t.Req.Arg, t.Conn.RemoteAddr(), r.Status, r.Err)
+	return fmt.Sprintf("%v %v %v %v %v %v %v %v\n", t.time, t.delta, t.req.Method,
+		t.req.Path, t.req.Arg, t.conn.RemoteAddr(), t.rsp.Status, t.err)
 }
 
 func (t *Transaction) get() {
@@ -61,8 +61,8 @@ func (t *Transaction) get() {
 	}
 
 	t.rsp.Status = 200
-	append(t.rsp.Head, data[:item.Item.HeadLen])
-	append(t.rsp.Body, data[item.Item.HeadLen:])
+	t.rsp.Head = append(t.rsp.Head, data[:item.Item.HeadLen])
+	t.rsp.Body = append(t.rsp.Body, data[item.Item.HeadLen:])
 }
 
 func (t *Transaction) del() {
@@ -83,7 +83,7 @@ func (t *Transaction) del() {
 
 	if h, ok := t.req.Headers["Hornet-Group"]; ok {
 		var g HKey
-		if n, e := hex.Decode(g, h[1]); e != nil || n != KEY_HASH_LEN {
+		if n, e := hex.Decode(g[:], h[1]); e != nil || n != KEY_HASH_LEN {
 			panic(errors.New("GRP_FORMAR_ERROR"))
 		}
 		t.store.DelByGroup(g)
@@ -118,7 +118,7 @@ func (t *Transaction) put() {
 	}
 
 	if h, ok := t.req.Headers["Hornet-Group"]; ok {
-		if n, e := hex.Decode(g, h[1]); e != nil || n != KEY_HASH_LEN {
+		if n, e := hex.Decode(g[:], h[1]); e != nil || n != KEY_HASH_LEN {
 			panic(errors.New("GRP_FORMAR_ERROR"))
 		}
 	} else {
@@ -145,7 +145,7 @@ func (t *Transaction) put() {
 		delete(t.req.Headers, h.(string))
 	}
 
-	buf := bytes.NewBuffer()
+	buf := new(bytes.Buffer)
 	for _, h := range t.req.Headers {
 		buf.Write(h[0])
 		buf.Write(HTTP_SEMICOLON)
@@ -153,20 +153,20 @@ func (t *Transaction) put() {
 		buf.Write(HTTP_END)
 	}
 
-	head = buf.Bytes()
+	head := buf.Bytes()
 	item, data := t.store.Add(id, len(head)+cl)
-	item.Item.BodyLen = cl
-	item.Item.HeadLen = len(head)
+	item.Item.BodyLen = uint32(cl)
+	item.Item.HeadLen = uint32(len(head))
 	item.Item.Expire = 0 //TODO  Expire & etag
 	item.Item.Grp = g
-	item.Item.RawKeyLen = len(raw)
-	copy(item.Item.RawKey, raw)
+	item.Item.RawKeyLen = uint32(len(raw))
+	copy(item.Item.RawKey[:], raw)
 
 	copy(data, head)
-	data = data[len[head]:]
+	data = data[len(head):]
 
-	copy(data, t.req.body)
-	data = data[len[t.req.body]:]
+	copy(data, t.req.Body)
+	data = data[len(t.req.Body):]
 
 	if n, e := t.conn.Read(data); n != len(data) || e != nil {
 		t.store.Del(id)
@@ -183,7 +183,7 @@ func (t *Transaction) Handle(recv []byte) {
 
 	t.req.ParseBasic(recv[:n])
 
-	switch t.req.Method {
+	switch string(t.req.Method) {
 	case "GET":
 		t.get()
 	case "DEL":

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -58,7 +57,6 @@ func (b *Balancer) recv() {
 		b.lock.Lock()
 		b.svrs[string(data[:n])] = time.Now().Nanosecond() / 1e6
 		b.lock.Unlock()
-		time.Sleep(b.span)
 	}
 }
 
@@ -66,7 +64,7 @@ func (b *Balancer) GetServers() (svrs []string) {
 	now := time.Now().Nanosecond() / 1e6
 
 	b.lock.Lock()
-	b.lock.Unlock()
+	defer b.lock.Unlock()
 
 	for k, v := range b.svrs {
 		if v-now > GConfig["balancer.fault_ms"].(int) {

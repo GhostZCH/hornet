@@ -126,7 +126,7 @@ func NewStore() (s *Store) {
 	binary.Read(mfile, le, blocks)
 
 	for _, b := range blocks {
-		path := fmt.Sprintf(DATA_FMT, s.disk.path, b)
+		path := fmt.Sprintf(DATA_FMT, *s.disk.path, b)
 		if st, err := os.Stat(path); err != nil {
 			Lerror(err)
 		} else {
@@ -154,7 +154,8 @@ func (s *Store) Close() {
 	h := sHeader{Magic: MAGIC, Version: META_VERSION}
 
 	h.Blocks = int64(len(s.disk.blocks))
-	for _, bucket := range s.buckets {
+	for b := 0; b < BUCKET_LIMIT; b++ {
+		bucket := &s.buckets[b]
 		h.Items += int64(len(bucket.items))
 	}
 	Success(binary.Write(buf, le, h))
@@ -163,13 +164,14 @@ func (s *Store) Close() {
 		Success(binary.Write(buf, le, id))
 	}
 
-	for _, bucket := range s.buckets {
+	for b := 0; b < BUCKET_LIMIT; b++ {
+		bucket := &s.buckets[b]
 		for _, i := range bucket.items {
 			Success(binary.Write(buf, le, i.Item))
 		}
 	}
 
-	mpath := fmt.Sprintf(META_FMT, s.disk.path)
+	mpath := fmt.Sprintf(META_FMT, *s.disk.path)
 	mpath_tmp := mpath + ".tmp"
 
 	mfile, err := os.OpenFile(mpath_tmp, os.O_RDWR|os.O_CREATE, 0600)
@@ -212,7 +214,7 @@ func (s *Store) Add(id Key, size int) (item *Item, data []byte) {
 	b.items[id] = item
 	b.lock.Unlock()
 
-	return data, item
+	return item, data
 }
 
 func (s *Store) Get(id Key) (*Item, []byte) {
@@ -239,7 +241,7 @@ func (s *Store) Del(id Key) {
 }
 
 func (s *Store) DelByGroup(g HKey) {
-	for i := 0; i < BUCKET; i++ {
+	for i := 0; i < BUCKET_LIMIT; i++ {
 		b := &s.buckets[i]
 		b.lock.Lock()
 		for id, item := range b.items {
@@ -252,7 +254,7 @@ func (s *Store) DelByGroup(g HKey) {
 }
 
 func (s *Store) DelByRawKey(reg *regexp.Regexp) {
-	for i := 0; i < BUCKET; i++ {
+	for i := 0; i < BUCKET_LIMIT; i++ {
 		b := &s.buckets[i]
 		b.lock.Lock()
 		for id, item := range b.items {
@@ -279,7 +281,7 @@ func (sg *StoreGroup) clear(buckets []bucket) {
 
 		Lwarn("delete block ", sg.name, sg.size, len(sg.blocks[min]))
 
-		for i := 0; i < BUCKET; i++ {
+		for i := 0; i < BUCKET_LIMIT; i++ {
 			buckets[i].lock.Lock()
 			for id, item := range buckets[i].items {
 				if item.Item.Block == min {
@@ -312,7 +314,7 @@ func (sg *StoreGroup) clear(buckets []bucket) {
 }
 
 func (s *Store) getBucket(id Key) *bucket {
-	idx := int(id.Hash[0]) % BUCKET
+	idx := int(id.Hash[0]) % BUCKET_LIMIT
 	return &s.buckets[idx]
 }
 
