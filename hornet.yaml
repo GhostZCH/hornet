@@ -1,25 +1,30 @@
-server.listen: :8080
-runlog.path: /tmp/message
-runlog.level: info
-accesslog.path: /tmp/access
-accesslog.buf: 4096
-store.disk.path: /tmp/
-store.disk.cap: 10240000
-store.disk.blocksize: 1024000
-store.mem.cap: 10240000
-store.mem.blocksize: 1024000
-sock.req.timeout: 3
-sock.idle.timeout: 60
-http.header.maxlen: 4096
-http.header.discard:
+common.log.path: /tmp/message
+common.log.level: info
+common.accesslog.path: /tmp/access
+common.accesslog.buf: 4096
+common.sock.req.timeout: 3
+common.sock.idle.timeout: 60
+common.http.header.maxlen: 4096
+common.http.body.bufsize: 65536
+common.heartbeat.addr: 224.0.0.100:6969
+
+cache.addr: 127.0.0.1:6996
+cache.heartbeat: on
+cache.span_ms: 500
+cache.disk.path: /tmp/
+cache.disk.cap: 10240000
+cache.disk.blocksize: 1024000
+cache.mem.cap: 10240000
+cache.mem.blocksize: 1024000
+cache.http.header.discard:
   - Host
   - User-Agent
   - Expect
   - Content-Length
   - Hornet-Raw-Key
   - Hornet-Group
-http.body.bufsize: 65536
-balancer.mode: alone # client cluster
-balancer.addr: 224.0.0.100:6969
-balancer.span_ms: 500
-balancer.fault_ms: 2000
+
+proxy.fault_ms: 2000
+proxy.addr: 127.0.0.1:5225
+proxy.keepalive.count: 10
+

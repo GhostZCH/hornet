@@ -2,12 +2,9 @@ package main
 
 import (
 	"errors"
+	"net"
 	"regexp"
 )
-
-var REQ_REG = regexp.MustCompile("^(GET|PUT|DEL) /(.*)(\\?\\S+)? HTTP/1.1\r\n(.*)\r\n\r\n(.*)")
-var HEADER_REG = regexp.MustCompile("(\\S+):\\s*(\\S*)\r\n")
-var ARG_REQ = regexp.MustCompile("(\\S+)=(.*)&?")
 
 type Request struct {
 	Method  []byte
@@ -15,13 +12,8 @@ type Request struct {
 	Arg     []byte
 	Head    []byte
 	Body    []byte
-	Args    map[string][][]byte
-	Headers map[string][][]byte
-}
-
-func (r *Request) Init() {
-	r.Args = make(map[string][][]byte)
-	r.Headers = make(map[string][][]byte)
+	Args    [][]byte
+	Headers [][]byte
 }
 
 func (r *Request) ParseBasic(buf []byte) {
@@ -45,4 +37,35 @@ func (r *Request) ParseArgs() {
 	for _, a := range args {
 		r.Headers[string(a[0])] = a
 	}
+}
+
+func (r *Request) Send(conn *net.TCPConn, buf []byte) int {
+	var err error
+	sum, n := 0, 0
+
+	conn.SetNoDelay(false)
+	defer conn.SetNoDelay(true)
+
+	if buf != nil {
+		sum, err = conn.Write(buf)
+		Success(err)
+	}
+
+	n, err = fmt.Fprintf(conn, REQ_FORMAT, r.Method, r.Path, r.Arg)
+	Success(err)
+	sum += n
+
+	n, err = conn.Write(r.Head)
+	Success(err)
+	sum += n
+
+	n, err = conn.Write(HTTP_END)
+	Success(err)
+	sum += n
+
+	n, err = conn.Write(r.Body)
+	Success(err)
+	sum += n
+
+	return sum
 }

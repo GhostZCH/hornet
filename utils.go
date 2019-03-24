@@ -5,6 +5,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
+	"net"
 	"os"
 	"syscall"
 )
@@ -30,7 +31,7 @@ func Success(args ...interface{}) []interface{} {
 	if args[len(args)-1] != nil {
 		panic(err)
 	}
-	return args[:len(args)-1]
+	return args
 }
 
 func InitLog() {
@@ -150,4 +151,30 @@ func OpenMmap(path string, size int) []byte {
 	Success(me)
 
 	return data
+}
+
+func SetTimeOut(conn *net.TCPConn, seconds int) {
+	timeout := time.Duration(seconds) * time.Second
+	deadline := time.Now().Add(timeout)
+	Success(conn.SetDeadline(deadline))
+}
+
+func HandleSignal(svr *Server) {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGUSR2, syscall.SIGINT, syscall.SIGTERM)
+
+	for {
+		sig := <-sigs
+		Lwarn("get signal ", sig)
+
+		switch sig {
+		case syscall.SIGTERM:
+			fallthrough
+		case syscall.SIGINT:
+			svr.Stop()
+			break
+		case syscall.SIGUSR2:
+			InitLog()
+		}
+	}
 }

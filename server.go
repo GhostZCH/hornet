@@ -3,83 +3,68 @@ package main
 import (
 	"io"
 	"net"
+	"sync"
 	"time"
 )
 
+type Handler interface {
+	Start()
+	GetListener() string
+	GetConnCtx(conn *net.TCPConn) interface{}
+	Handle(conn *net.TCPConn)
+	Stop()
+}
+
 type Server struct {
 	run      bool
-	store    *Store
-	listen   *net.TCPListener
-	balancer *Balancer
+	listener *net.TCPListener
+	handler  *Handler
 }
 
-func NewServer(store *Store) (s *Server) {
-	s = new(Server)
-	s.run = true
-	s.store = store
-	return s
+func NewServer(h *Handler) (svr *Server) {
+	svr = new(Server)
+	svr.run = true
+	svr.handler = h
+	return svr
 }
 
-func (s *Server) Start() {
-	listen, err := net.Listen("tcp", GConfig["server.listen"].(string))
+func (svr *Server) Start() {
+	laddr, rerr = net.ResolveTCPAddr("tcp", svr.GetListener())
 	Success(err)
-	s.listen = listen.(*net.TCPListener)
 
-	s.balancer = NewBalancer()
-	s.balancer.Start()
+	listener, lerr := net.ListenTCP("tcp")
+	Success(err)
 
 	Lwarn("server start handle requests")
+	wg := new(sync.WaitGroup)
 	for s.run {
-		conn, err := s.listen.AcceptTCP()
+		conn, err := listener.AcceptTCP()
 		if err != nil {
 			Lerror(err)
-			continue
+			break
 		}
-		go s.handleConn(conn)
+		go s.handleConn(conn, wg)
 	}
-	// TODO wait for all request finished
+	wg.Wait()
 }
 
-func (s *Server) Stop() {
+func (svr *Server) Stop() {
 	Lwarn("server stoping ...")
-	s.run = false
-	s.listen.Close()
+	svr.run = false
+	svr.listener.Close()
 }
 
-func (s *Server) handlerReq(conn *net.TCPConn, recv []byte) (err error) {
-	t := NewTrans(conn, s.store)
+func (svr *Server) handleConn(conn *net.TCPConn, wg *sync.WaitGroup) {
+	wg.Add(1)
 
-	defer func() {
-		if e := recover(); e != nil {
-			err = e.(error)
-		}
-		if err != io.EOF {
-			t.Finish(err)
-			Laccess(t)
-		}
-	}()
-
-	setTimeOut(conn, GConfig["sock.req.timeout"].(int))
-
-	t.Handle(recv)
-
-	setTimeOut(conn, GConfig["sock.idle.timeout"].(int))
-	return nil
-}
-
-func (s *Server) handleConn(conn *net.TCPConn) {
 	defer conn.Close()
-	recv := make([]byte, GConfig["http.header.maxlen"].(int))
+	defer wg.Done()
 
-	for s.run {
-		if err := s.handlerReq(conn, recv); err != nil {
+	ctx := svr.handler.GetConnCtx(conn)
+
+	for ch.run {
+		if err := svr.handler.Handle(conn, ctx); err != nil {
 			return
 		}
 	}
-}
-
-func setTimeOut(conn *net.TCPConn, seconds int) {
-	timeout := time.Duration(seconds) * time.Second
-	deadline := time.Now().Add(timeout)
-	Success(conn.SetDeadline(deadline))
 }

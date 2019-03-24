@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-var HTTP_SEMICOLON = []byte(": ")
-
 type Transaction struct {
 	conn  *net.TCPConn
 	req   Request

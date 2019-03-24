@@ -3,33 +3,49 @@ package main
 import (
 	"fmt"
 	"net"
+	"strconv"
 )
-
-var HTTP_END = []byte("\r\n")
-var RSP_MAP = map[int]string{200: " 200 OK", 201: " 201 Created", 404: "404 Not Found"}
-var RSP_FORMAT = "HTTP/1.1 %s\r\nServer: Hornet\r\nConnection: keep-alive\r\nContent-Length: %d\r\n"
 
 type Respose struct {
 	Status int
-	Head   [][]byte
-	Body   [][]byte
+	Head   []byte
+	Body   []byte
+	Heads  [][]byte
+	Bodys  [][]byte
 }
 
-func (r *Respose) Init() {
-	r.Head = make([][]byte, 4)
-	r.Body = make([][]byte, 4)
-}
-
-func (r *Respose) Send(conn *net.TCPConn) {
-	cl := 0
-	for _, b := range r.Body {
-		cl += len(b)
+func (r *Respose) ParseBasic(buf []byte) {
+	m := RSP_REG.FindSubmatch(buf)
+	if len(m) == 0 {
+		panic(errors.New("RSP_FORMＡT_ERROR"))
 	}
 
+	r.Head, r.Body = m[2], m[3]
+	r.Status = strconv.Atoi(string(m[1]))
+}
+
+func (r *Respose) ParseHeaders() {
+	headers := HEADER_REG.FindAllSubmatch(r.Head, -1)
+	for _, h := range headers {
+		r.Headers[string(h[0])] = h
+	}
+}
+
+func (r *Respose) Send(conn *net.TCPConn, buf []byte) {
 	conn.SetNoDelay(false)
 	defer conn.SetNoDelay(true)
 
-	Success(fmt.Fprintf(conn, RSP_FORMAT, RSP_MAP[r.Status], cl))
+	if buf != nil {
+		Success(conn.Write(buf))
+		return
+	}
+
+	bodyLen := 0
+	for _, b := range r.Body {
+		bodyLen += len(b)
+	}
+
+	Success(fmt.Fprintf(conn, RSP_FORMAT, RSP_MAP[r.Status], bodyLen))
 
 	for _, b := range r.Head {
 		Success(conn.Write(b))

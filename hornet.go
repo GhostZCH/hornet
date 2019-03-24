@@ -2,41 +2,20 @@ package main
 
 import (
 	"flag"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
 const VERSION int64 = 1000000
 
-func parseArgs() string {
+func parseArgs() (string, string) {
 	path := flag.String("conf", "hornet.yaml", "conf file path")
+	mode := flag.String("mode", "cache", "start mode cache or proxy")
+
 	flag.Parse()
-	return *path
-}
-
-func handleSignal(svr *Server) {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGUSR2, syscall.SIGINT, syscall.SIGTERM)
-
-	for {
-		sig := <-sigs
-		Lwarn("get signal ", sig)
-
-		switch sig {
-		case syscall.SIGTERM:
-			fallthrough
-		case syscall.SIGINT:
-			svr.Stop()
-			break
-		case syscall.SIGUSR2:
-			InitLog()
-		}
-	}
+	return *path, *mode
 }
 
 func main() {
-	path := parseArgs()
+	path, mode := parseArgs()
 
 	LoadConf(path, "local_"+path)
 	InitLog()
@@ -49,10 +28,15 @@ func main() {
 		}
 	}()
 
-	s := NewStore()
-	svr := NewServer(s)
+	var svr Server
+
+	switch mode {
+	case:"cache"
+		svr = NewServer(NewStore())
+	case: "proxy"
+		svr = NewProxy()
+	} 
 	go handleSignal(svr)
 
 	svr.Start()
-	s.Close()
 }
