@@ -7,7 +7,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"syscall"
+	"time"
 )
 
 type Logger struct {
@@ -26,12 +28,11 @@ var levelMap = map[string]int{"info": 1, "warn": 2, "error": 3}
 
 var GConfig = make(map[string]interface{})
 
-func Success(args ...interface{}) []interface{} {
+func Success(args ...interface{}) {
 	err := args[len(args)-1]
 	if args[len(args)-1] != nil {
 		panic(err)
 	}
-	return args
 }
 
 func InitLog() {
@@ -45,17 +46,15 @@ func InitLog() {
 			logger.accessWriter.Flush()
 			logger.accessFile.Close()
 		}
-		logger.info = nil
-		logger.warn = nil
-		logger.err = nil
-		logger.access = nil
-	} else {
-		logger = new(Logger)
 	}
 
+	logger = new(Logger)
+
 	// init run log
+	flag := os.O_APPEND | os.O_CREATE | os.O_WRONLY
+
 	path := GConfig["runlog.path"].(string)
-	logger.runFile, err = os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	logger.runFile, err = os.OpenFile(path, flag, 0666)
 	Success(err)
 
 	var level = GConfig["runlog.level"].(string)
@@ -78,20 +77,18 @@ func InitLog() {
 
 	// init access log
 	path = GConfig["accesslog.path"].(string)
-	logger.accessFile, err = os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	logger.accessFile, err = os.OpenFile(path, flag, 0666)
 	Success(err)
 
 	bufsize := GConfig["accesslog.buf"].(int)
 	logger.access = make(chan string, 64)
 	logger.accessWriter = bufio.NewWriterSize(logger.accessFile, bufsize)
 
-	go writeAccess()
-}
-
-func writeAccess() {
-	for {
-		logger.accessWriter.WriteString(<-logger.access)
-	}
+	go func() {
+		for {
+			logger.accessWriter.WriteString(<-logger.access)
+		}
+	}()
 }
 
 func Linfo(v ...interface{}) {

@@ -4,24 +4,23 @@ import (
 	"io"
 	"net"
 	"sync"
-	"time"
 )
 
 type Handler interface {
 	Start()
 	GetListener() string
-	GetConnCtx(conn *net.TCPConn) interface{}
-	Handle(conn *net.TCPConn)
-	Stop()
+	GetCtx() interface{}
+	Handle(trans *Transaction)
+	Close()
 }
 
 type Server struct {
 	run      bool
 	listener *net.TCPListener
-	handler  *Handler
+	handler  Handler
 }
 
-func NewServer(h *Handler) (svr *Server) {
+func NewServer(h Handler) (svr *Server) {
 	svr = new(Server)
 	svr.run = true
 	svr.handler = h
@@ -29,23 +28,26 @@ func NewServer(h *Handler) (svr *Server) {
 }
 
 func (svr *Server) Start() {
-	laddr, rerr = net.ResolveTCPAddr("tcp", svr.GetListener())
+	addr, err := net.ResolveTCPAddr("tcp", svr.handler.GetListener())
 	Success(err)
 
-	listener, lerr := net.ListenTCP("tcp")
+	listener, err := net.ListenTCP("tcp", addr)
 	Success(err)
 
 	Lwarn("server start handle requests")
+	svr.handler.Start()
+
 	wg := new(sync.WaitGroup)
-	for s.run {
+	for svr.run {
 		conn, err := listener.AcceptTCP()
 		if err != nil {
 			Lerror(err)
 			break
 		}
-		go s.handleConn(conn, wg)
+		go svr.handleConn(conn, wg)
 	}
 	wg.Wait()
+	svr.handler.Close()
 }
 
 func (svr *Server) Stop() {
@@ -54,17 +56,37 @@ func (svr *Server) Stop() {
 	svr.listener.Close()
 }
 
+func (svr *Server) handleTrans(trans *Transaction) (err error) {
+	defer func() {
+		err = recover().(error)
+		if err != io.EOF {
+			Laccess(trans)
+			if err == nil {
+				SetTimeOut(trans.Conn, GConfig["sock.idle.timeout"].(int))
+			}
+		}
+	}()
+
+	SetTimeOut(trans.Conn, GConfig["sock.req.timeout"].(int))
+	svr.handler.Handle(trans)
+	return err
+}
+
 func (svr *Server) handleConn(conn *net.TCPConn, wg *sync.WaitGroup) {
 	wg.Add(1)
+
+	defer func() {
+		if err := recover(); err != nil {
+			Lwarn(err)
+		}
+	}()
 
 	defer conn.Close()
 	defer wg.Done()
 
-	ctx := svr.handler.GetConnCtx(conn)
-
-	for ch.run {
-		if err := svr.handler.Handle(conn, ctx); err != nil {
-			return
-		}
+	var err error = nil
+	ctx := svr.handler.GetCtx()
+	for svr.run && err == nil {
+		err = svr.handleTrans(NewTrans(conn, ctx))
 	}
 }

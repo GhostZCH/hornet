@@ -2,8 +2,8 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net"
-	"regexp"
 )
 
 type Request struct {
@@ -12,8 +12,13 @@ type Request struct {
 	Arg     []byte
 	Head    []byte
 	Body    []byte
-	Args    [][]byte
-	Headers [][]byte
+	Args    map[string][][]byte
+	Headers map[string][][]byte
+}
+
+func (r *Request) Init() {
+	r.Args = make(map[string][][]byte)
+	r.Headers = make(map[string][][]byte)
 }
 
 func (r *Request) ParseBasic(buf []byte) {
@@ -28,14 +33,14 @@ func (r *Request) ParseBasic(buf []byte) {
 func (r *Request) ParseHeaders() {
 	headers := HEADER_REG.FindAllSubmatch(r.Head, -1)
 	for _, h := range headers {
-		r.Headers[string(h[0])] = h
+		r.Headers[string(h[1])] = h
 	}
 }
 
 func (r *Request) ParseArgs() {
 	args := ARG_REQ.FindAllSubmatch(r.Head, -1)
 	for _, a := range args {
-		r.Headers[string(a[0])] = a
+		r.Headers[string(a[1])] = a
 	}
 }
 

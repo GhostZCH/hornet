@@ -12,18 +12,6 @@ import (
 	"time"
 )
 
-const (
-	MAGIC         int64  = 6000576210161258312 //HORNETFS
-	META_VERSION  int64  = VERSION - VERSION%1000000
-	DATA_FMT      string = "%s/%016x.dat"
-	META_FMT      string = "%s/meta"
-	KEY_HASH_LEN  int    = 16
-	RAW_KEY_LIMIT int    = 128
-	RANGE_BLOCK   int    = 256 * 1024
-	BUCKET_LIMIT  int    = 256
-	TAG_LIMIT     int    = 4
-)
-
 type HKey [KEY_HASH_LEN]byte
 
 type Key struct {

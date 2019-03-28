@@ -1,10 +1,11 @@
 package main
 
 import (
+	"errors"
 	"flag"
+	"path/filepath"
+	"runtime/debug"
 )
-
-const VERSION int64 = 1000000
 
 func parseArgs() (string, string) {
 	path := flag.String("conf", "hornet.yaml", "conf file path")
@@ -17,7 +18,8 @@ func parseArgs() (string, string) {
 func main() {
 	path, mode := parseArgs()
 
-	LoadConf(path, "local_"+path)
+	dir, name := filepath.Split(path)
+	LoadConf(path, dir+"local_"+name)
 	InitLog()
 
 	Lwarn(GConfig)
@@ -25,18 +27,24 @@ func main() {
 	defer func() {
 		if err := recover(); err != nil {
 			Lerror(err)
+			Lwarn(string(debug.Stack()))
 		}
 	}()
 
-	var svr Server
+	var h Handler
 
 	switch mode {
-	case:"cache"
-		svr = NewServer(NewStore())
-	case: "proxy"
-		svr = NewProxy()
-	} 
-	go handleSignal(svr)
+	case "cache":
+		h = NewCacheHandler()
+	case "proxy":
+		h = NewProxyHandler()
+	default:
+		panic(errors.New("unknown mode:" + mode))
+	}
+
+	svr := NewServer(h)
+
+	go HandleSignal(svr)
 
 	svr.Start()
 }
