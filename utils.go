@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/hex"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
@@ -174,4 +175,13 @@ func HandleSignal(svr *Server) {
 			InitLog()
 		}
 	}
+}
+
+func DecodeKey(buf []byte) []byte {
+	var key [KEY_HASH_LEN]byte
+	n, e := hex.Decode(key[:], buf)
+	if n != KEY_HASH_LEN || e != nil {
+		return nil
+	}
+	return key[:]
 }

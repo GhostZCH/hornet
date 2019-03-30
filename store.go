@@ -16,7 +16,7 @@ type HKey [KEY_HASH_LEN]byte
 
 type Key struct {
 	Hash  HKey
-	Range uint32
+	Range [2]uint32
 }
 
 type CoreItem struct {
@@ -75,18 +75,18 @@ type Store struct {
 
 func NewStore() (s *Store) {
 	s = new(Store)
-	path := GConfig["cache.store.path"].(string)
+	path := GConfig["cache.disk.path"].(string)
 
 	s.mem.init(
 		"MEM",
-		GConfig["cache.store.mem.cap"].(int),
-		GConfig["cache.store.mem.blocksize"].(int),
+		GConfig["cache.mem.cap"].(int),
+		GConfig["cache.mem.blocksize"].(int),
 		nil)
 
 	s.disk.init(
 		"DISK",
-		GConfig["cache.store.disk.cap"].(int),
-		GConfig["cache.store.disk.blocksize"].(int),
+		GConfig["cache.disk.cap"].(int),
+		GConfig["cache.disk.blocksize"].(int),
 		&path)
 
 	for i := 0; i < BUCKET_LIMIT; i++ {
@@ -96,8 +96,12 @@ func NewStore() (s *Store) {
 	le := binary.LittleEndian
 	mpath := fmt.Sprintf(META_FMT, path)
 	mfile, err := os.Open(mpath)
-	if err != nil && !os.IsNotExist(err) {
-		panic(err)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			panic(err)
+		}
+		Lwarn("no meta file found")
+		return
 	}
 
 	defer mfile.Close()

@@ -16,7 +16,6 @@ type BackEnd struct {
 }
 
 type ProxyHandler struct {
-	fault     time.Duration
 	backEnds  map[string]*BackEnd
 	heartBeat *net.UDPConn
 	crcle     *ConstHash
@@ -31,13 +30,13 @@ func (be *BackEnd) Hash(i int) uint32 {
 func NewProxyHandler() *ProxyHandler {
 	h := new(ProxyHandler)
 
-	h.fault = time.Duration(GConfig["proxy.fault_ms"].(int)) * time.Millisecond
-
 	addr, err := net.ResolveUDPAddr("udp", GConfig["common.heartbeat.addr"].(string))
 	Success(err)
 
 	h.heartBeat, err = net.ListenMulticastUDP("udp", nil, addr)
 	Success(err)
+
+	h.backEnds = make(map[string]*BackEnd)
 
 	return h
 }
@@ -60,12 +59,16 @@ func (ph *ProxyHandler) Handle(trans *Transaction) {
 
 	trans.Req.ParseBasic(buf[:n])
 
-	ph.lock.RLock()
-	// TODO get key, for del
-	// key := hex.Decode(trans.Req.Path)
-	back := ph.crcle.Get(0).(*BackEnd)
+	if trans.Req.Path == nil {
+		// TODO broadcast del
+		return
+	}
+	key := DecodeKey(trans.Req.Path)
 
+	ph.lock.RLock()
+	back := ph.crcle.Get(crc32.ChecksumIEEE(key)).(*BackEnd)
 	ph.lock.RUnlock()
+
 	var upstream *net.TCPConn
 	if len(back.Free) == 0 {
 		upstream, err = net.DialTCP("tcp", nil, back.Addr)
@@ -104,16 +107,21 @@ func (h *ProxyHandler) recv() {
 	data := make([]byte, 1024)
 
 	for {
-		n, _, err := h.heartBeat.ReadFromUDP(data)
-		Success(err)
+		n, raddr, err := h.heartBeat.ReadFromUDP(data)
+		if err != nil {
+			Lerror(raddr, "ReadFromUDP", err)
+			return
+		}
 
 		name := string(data[:n])
 
 		h.lock.Lock()
 		if bk, ok := h.backEnds[name]; !ok {
-			addr, e := net.ResolveTCPAddr("tcp", name)
-			Success(e)
-			h.backEnds[name] = &BackEnd{name, addr, time.Now(), make(chan *net.TCPConn, 32)}
+			if addr, e := net.ResolveTCPAddr("tcp", name); e != nil {
+				Lerror(raddr, "ResolveTCPAddr", name, e)
+			} else {
+				h.backEnds[name] = &BackEnd{name, addr, time.Now(), make(chan *net.TCPConn, 32)}
+			}
 		} else {
 			bk.Last = time.Now()
 		}
@@ -125,8 +133,10 @@ func (h *ProxyHandler) recv() {
 func (h *ProxyHandler) update() {
 	var svrs []Node
 
+	fault := time.Duration(GConfig["proxy.fault_ms"].(int)) * time.Millisecond
+
 	for {
-		time.Sleep(h.fault)
+		time.Sleep(fault)
 
 		svrs = svrs[:0]
 		now := time.Now()
@@ -134,7 +144,7 @@ func (h *ProxyHandler) update() {
 		h.lock.Lock()
 
 		for n, sn := range h.backEnds {
-			if now.Sub(sn.Last) > h.fault {
+			if now.Sub(sn.Last) > fault {
 				delete(h.backEnds, n)
 			} else {
 				svrs = append(svrs, sn)

@@ -31,19 +31,22 @@ func (svr *Server) Start() {
 	addr, err := net.ResolveTCPAddr("tcp", svr.handler.GetListener())
 	Success(err)
 
-	listener, err := net.ListenTCP("tcp", addr)
+	ls, err := net.ListenTCP("tcp", addr)
 	Success(err)
+
+	svr.listener = ls
 
 	Lwarn("server start handle requests")
 	svr.handler.Start()
 
 	wg := new(sync.WaitGroup)
 	for svr.run {
-		conn, err := listener.AcceptTCP()
+		conn, err := ls.AcceptTCP()
 		if err != nil {
 			Lerror(err)
 			break
 		}
+
 		go svr.handleConn(conn, wg)
 	}
 	wg.Wait()

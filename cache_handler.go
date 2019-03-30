@@ -41,13 +41,18 @@ func (h *CacheHandler) Start() {
 	go func() {
 		msg := []byte(GConfig["cache.addr"].(string))
 		span := time.Duration(GConfig["cache.span_ms"].(int)) * time.Millisecond
-		for _, e := h.heartBeat.Write(msg); e == nil; {
+		for {
+			if _, e := h.heartBeat.Write(msg); e != nil {
+				Lerror("heartBeat.Write", e)
+				break
+			}
 			time.Sleep(span)
 		}
 	}()
 }
 
 func (h *CacheHandler) Close() {
+	Lwarn(h, "close")
 	h.heartBeat.Close()
 	h.store.Close()
 }
