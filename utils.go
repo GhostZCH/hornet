@@ -53,11 +53,11 @@ func InitLog() {
 	// init run log
 	flag := os.O_APPEND | os.O_CREATE | os.O_WRONLY
 
-	path := GConfig["runlog.path"].(string)
+	path := GConfig["common.log.path"].(string)
 	logger.runFile, err = os.OpenFile(path, flag, 0666)
 	Success(err)
 
-	var level = GConfig["runlog.level"].(string)
+	var level = GConfig["common.log.level"].(string)
 	var lv, ok = levelMap[level]
 	if !ok {
 		panic("level [" + level + "] not \"error\" \"warn\" or \"info\"")
@@ -76,11 +76,11 @@ func InitLog() {
 	}
 
 	// init access log
-	path = GConfig["accesslog.path"].(string)
+	path = GConfig["common.accesslog.path"].(string)
 	logger.accessFile, err = os.OpenFile(path, flag, 0666)
 	Success(err)
 
-	bufsize := GConfig["accesslog.buf"].(int)
+	bufsize := GConfig["common.accesslog.buf"].(int)
 	logger.access = make(chan string, 64)
 	logger.accessWriter = bufio.NewWriterSize(logger.accessFile, bufsize)
 

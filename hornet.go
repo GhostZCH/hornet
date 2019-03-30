@@ -17,7 +17,6 @@ func parseArgs() (string, string) {
 
 func main() {
 	path, mode := parseArgs()
-
 	dir, name := filepath.Split(path)
 	LoadConf(path, dir+"local_"+name)
 	InitLog()

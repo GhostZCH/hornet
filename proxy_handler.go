@@ -33,7 +33,7 @@ func NewProxyHandler() *ProxyHandler {
 
 	h.fault = time.Duration(GConfig["proxy.fault_ms"].(int)) * time.Millisecond
 
-	addr, err := net.ResolveUDPAddr("udp", GConfig["balancer.addr"].(string))
+	addr, err := net.ResolveUDPAddr("udp", GConfig["common.heartbeat.addr"].(string))
 	Success(err)
 
 	h.heartBeat, err = net.ListenMulticastUDP("udp", nil, addr)

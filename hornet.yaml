@@ -6,16 +6,17 @@ common.sock.req.timeout: 3
 common.sock.idle.timeout: 60
 common.http.header.maxlen: 4096
 common.http.body.bufsize: 65536
-common.heartbeat.addr: 224.0.0.100:6969
+common.heartbeat.addr: 224.0.0.100:3300
 
-cache.addr: 127.0.0.1:6996
-cache.heartbeat: on
+cache.addr: 127.0.0.1:1100
+cache.heartbeat: true
 cache.span_ms: 500
 cache.disk.path: /tmp/
 cache.disk.cap: 10240000
 cache.disk.blocksize: 1024000
 cache.mem.cap: 10240000
 cache.mem.blocksize: 1024000
+cache.range_blcok: 262144
 cache.http.header.discard:
   - Host
   - User-Agent
@@ -25,6 +26,6 @@ cache.http.header.discard:
   - Hornet-Group
 
 proxy.fault_ms: 2000
-proxy.addr: 127.0.0.1:5225
+proxy.addr: 127.0.0.1:2200
 proxy.keepalive.count: 10
 

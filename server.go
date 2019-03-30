@@ -62,12 +62,12 @@ func (svr *Server) handleTrans(trans *Transaction) (err error) {
 		if err != io.EOF {
 			Laccess(trans)
 			if err == nil {
-				SetTimeOut(trans.Conn, GConfig["sock.idle.timeout"].(int))
+				SetTimeOut(trans.Conn, GConfig["common.sock.idle.timeout"].(int))
 			}
 		}
 	}()
 
-	SetTimeOut(trans.Conn, GConfig["sock.req.timeout"].(int))
+	SetTimeOut(trans.Conn, GConfig["common.sock.req.timeout"].(int))
 	svr.handler.Handle(trans)
 	return err
 }

@@ -75,18 +75,18 @@ type Store struct {
 
 func NewStore() (s *Store) {
 	s = new(Store)
-	path := GConfig["store.path"].(string)
+	path := GConfig["cache.store.path"].(string)
 
 	s.mem.init(
 		"MEM",
-		GConfig["store.mem.cap"].(int),
-		GConfig["store.mem.blocksize"].(int),
+		GConfig["cache.store.mem.cap"].(int),
+		GConfig["cache.store.mem.blocksize"].(int),
 		nil)
 
 	s.disk.init(
 		"DISK",
-		GConfig["store.disk.cap"].(int),
-		GConfig["store.disk.blocksize"].(int),
+		GConfig["cache.store.disk.cap"].(int),
+		GConfig["cache.store.disk.blocksize"].(int),
 		&path)
 
 	for i := 0; i < BUCKET_LIMIT; i++ {

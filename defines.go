@@ -12,7 +12,6 @@ const (
 	META_FMT      string = "%s/meta"
 	KEY_HASH_LEN  int    = 16
 	RAW_KEY_LIMIT int    = 128
-	RANGE_BLOCK   int    = 256 * 1024
 	BUCKET_LIMIT  int    = 256
 	TAG_LIMIT     int    = 4
 	REQ_FORMAT    string = "%s /%s%s HTTP/1.1\r\n"

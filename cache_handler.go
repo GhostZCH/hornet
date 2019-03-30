@@ -18,7 +18,7 @@ type CacheHandler struct {
 func NewCacheHandler() (h *CacheHandler) {
 	var err error
 
-	addr, err := net.ResolveUDPAddr("udp", GConfig["balancer.addr"].(string))
+	addr, err := net.ResolveUDPAddr("udp", GConfig["common.heartbeat.addr"].(string))
 	Success(err)
 
 	h = new(CacheHandler)
@@ -30,7 +30,7 @@ func NewCacheHandler() (h *CacheHandler) {
 }
 
 func (h *CacheHandler) GetCtx() interface{} {
-	return make([]byte, GConfig["http.header.maxlen"].(int))
+	return make([]byte, GConfig["common.http.header.maxlen"].(int))
 }
 
 func (h *CacheHandler) GetListener() string {
@@ -40,7 +40,7 @@ func (h *CacheHandler) GetListener() string {
 func (h *CacheHandler) Start() {
 	go func() {
 		msg := []byte(GConfig["cache.addr"].(string))
-		span := time.Duration(GConfig["balancer.span_ms"].(int)) * time.Millisecond
+		span := time.Duration(GConfig["cache.span_ms"].(int)) * time.Millisecond
 		for _, e := h.heartBeat.Write(msg); e == nil; {
 			time.Sleep(span)
 		}
@@ -172,7 +172,7 @@ func (h *CacheHandler) put(trans *Transaction) {
 		panic(errors.New("RAW_KEY_NOT_SET"))
 	}
 
-	for _, h := range GConfig["http.header.discard"].([]interface{}) {
+	for _, h := range GConfig["cache.http.header.discard"].([]interface{}) {
 		delete(trans.Req.Headers, h.(string))
 	}
 
