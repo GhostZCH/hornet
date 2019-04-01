@@ -28,7 +28,7 @@ func NewTrans(c *net.TCPConn, ctx interface{}) *Transaction {
 }
 
 func (t *Transaction) String() string {
-	return fmt.Sprintf("%d %d %s %s %s %s %s %d %s %s %s\n",
+	return fmt.Sprintf("%d %d %s %s %s %s %s %d [%s] [%s] [%v]\n",
 		VERSION, t.Time.Unix(), time.Since(t.Time),
 		t.Req.Method, t.Req.Path, t.Req.Arg, t.Conn.RemoteAddr(),
 		t.Rsp.Status, t.ClientMsg, t.SvrMsg, t.Err)

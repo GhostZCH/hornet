@@ -66,7 +66,7 @@ func (ph *ProxyHandler) Handle(trans *Transaction) {
 	key := DecodeKey(trans.Req.Path)
 
 	ph.lock.RLock()
-	back := ph.crcle.Get(crc32.ChecksumIEEE(key)).(*BackEnd)
+	back := ph.crcle.Get(crc32.ChecksumIEEE(key[:])).(*BackEnd)
 	ph.lock.RUnlock()
 
 	var upstream *net.TCPConn

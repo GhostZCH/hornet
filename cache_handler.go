@@ -80,15 +80,13 @@ func (h *CacheHandler) Handle(trans *Transaction) {
 func (h *CacheHandler) get(trans *Transaction) {
 	trans.Req.ParseArgs()
 
-	var id Key
-	if n, e := hex.Decode(id.Hash[:], trans.Req.Path); e != nil || n != KEY_HASH_LEN {
-		panic(errors.New("ID_FORMAR_ERROR"))
-	}
+	var key Key
+	key.Hash = DecodeKey(trans.Req.Path)
 
 	// TODO range /xxxxxxxxxxxxxxxx[?start=100&end=500]
 	// 可能要跨越多个块，第一个只保存head, head不存在就算删除，head.range = 0
 
-	item, data := h.store.Get(id)
+	item, data := h.store.Get(key)
 	if item == nil {
 		trans.Rsp.Status = 404
 		trans.Rsp.Send(trans.Conn, nil)

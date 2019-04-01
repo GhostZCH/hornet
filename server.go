@@ -61,7 +61,10 @@ func (svr *Server) Stop() {
 
 func (svr *Server) handleTrans(trans *Transaction) (err error) {
 	defer func() {
-		err = recover().(error)
+		if e, ok := recover().(error); ok {
+			err = e
+		}
+
 		if err != io.EOF {
 			Laccess(trans)
 			if err == nil {

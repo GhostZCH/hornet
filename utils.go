@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/hex"
+	"errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
@@ -87,7 +88,8 @@ func InitLog() {
 
 	go func() {
 		for {
-			logger.accessWriter.WriteString(<-logger.access)
+			x := <-logger.access
+			logger.accessWriter.WriteString(x)
 		}
 	}()
 }
@@ -177,11 +179,11 @@ func HandleSignal(svr *Server) {
 	}
 }
 
-func DecodeKey(buf []byte) []byte {
+func DecodeKey(buf []byte) HKey {
 	var key [KEY_HASH_LEN]byte
 	n, e := hex.Decode(key[:], buf)
 	if n != KEY_HASH_LEN || e != nil {
-		return nil
+		panic(errors.New("ID_FORMAR_ERROR"))
 	}
-	return key[:]
+	return key
 }
