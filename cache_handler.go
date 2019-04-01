@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/hex"
 	"errors"
 	"net"
 	"regexp"
@@ -68,9 +67,9 @@ func (h *CacheHandler) Handle(trans *Transaction) {
 	switch string(trans.Req.Method) {
 	case "GET":
 		h.get(trans)
-	case "DEL":
+	case "DELETE":
 		h.del(trans)
-	case "PUT":
+	case "POST":
 		h.put(trans)
 	}
 
@@ -89,14 +88,12 @@ func (h *CacheHandler) get(trans *Transaction) {
 	item, data := h.store.Get(key)
 	if item == nil {
 		trans.Rsp.Status = 404
-		trans.Rsp.Send(trans.Conn, nil)
 		return
 	}
 
 	trans.Rsp.Status = 200
 	trans.Rsp.Heads = append(trans.Rsp.Heads, data[:item.Item.HeadLen])
 	trans.Rsp.Bodys = append(trans.Rsp.Bodys, data[item.Item.HeadLen:])
-	trans.Rsp.Send(trans.Conn, nil)
 }
 
 func (h *CacheHandler) del(trans *Transaction) {
@@ -104,11 +101,7 @@ func (h *CacheHandler) del(trans *Transaction) {
 
 	if trans.Req.Path != nil {
 		var id Key
-		n, e := hex.Decode(id.Hash[:], trans.Req.Path[1:33])
-		if e != nil || n != KEY_HASH_LEN {
-			panic(errors.New("ID_FORMAR_ERROR"))
-		}
-		// del header for range
+		id.Hash = DecodeKey(trans.Req.Path)
 		h.store.Del(id)
 		return
 	}
@@ -116,10 +109,7 @@ func (h *CacheHandler) del(trans *Transaction) {
 	trans.Req.ParseHeaders()
 
 	if hdr, ok := trans.Req.Headers["Hornet-Group"]; ok {
-		var g HKey
-		if n, e := hex.Decode(g[:], hdr[2]); e != nil || n != KEY_HASH_LEN {
-			panic(errors.New("GRP_FORMAR_ERROR"))
-		}
+		g := DecodeKey(hdr[2])
 		h.store.DelByGroup(g)
 		return
 	}
@@ -143,24 +133,16 @@ func (h *CacheHandler) put(trans *Transaction) {
 	var raw []byte
 
 	// TODO range
-
 	if trans.Req.Path != nil {
-		n, e := hex.Decode(id.Hash[:], trans.Req.Path)
-		if e != nil || n != KEY_HASH_LEN {
-			panic(errors.New("ID_FORMAR_ERROR"))
-		}
+		id.Hash = DecodeKey(trans.Req.Path)
 	}
 
 	if hdr, ok := trans.Req.Headers["Hornet-Group"]; ok {
-		if n, e := hex.Decode(g[:], hdr[2]); e != nil || n != KEY_HASH_LEN {
-			panic(errors.New("GRP_FORMAR_ERROR"))
-		}
-	} else {
-		panic(errors.New("GRP_NOT_SET"))
+		g = DecodeKey(hdr[2])
 	}
 
 	if h, ok := trans.Req.Headers["Content-Length"]; ok {
-		if n, e := strconv.Atoi(string(h[1])); e != nil {
+		if n, e := strconv.Atoi(string(h[2])); e != nil {
 			panic(e)
 		} else {
 			cl = n
@@ -170,9 +152,7 @@ func (h *CacheHandler) put(trans *Transaction) {
 	}
 
 	if h, ok := trans.Req.Headers["Hornet-Raw-Key"]; ok {
-		raw = h[1]
-	} else {
-		panic(errors.New("RAW_KEY_NOT_SET"))
+		raw = h[2]
 	}
 
 	for _, h := range GConfig["cache.http.header.discard"].([]interface{}) {
@@ -182,7 +162,6 @@ func (h *CacheHandler) put(trans *Transaction) {
 	buf := new(bytes.Buffer)
 	for _, h := range trans.Req.Headers {
 		buf.Write(h[0])
-		buf.Write(HTTP_END)
 	}
 
 	head := buf.Bytes()

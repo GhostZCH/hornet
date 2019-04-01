@@ -18,11 +18,11 @@ const (
 	RSP_FORMAT    string = "HTTP/1.1 %s\r\nServer: Hornet\r\nConnection: keep-alive\r\nContent-Length: %d\r\n"
 )
 
-var HTTP_END []byte = []byte("\r\n\r\n")
+var HTTP_END []byte = []byte("\r\n")
 var HTTP_SEMICOLON = []byte(": ")
-var RSP_MAP = map[int]string{200: " 200 OK", 201: " 201 Created", 404: "404 Not Found"}
+var RSP_MAP = map[int]string{200: "200 OK", 201: "201 Created", 404: "404 Not Found"}
 
 var HEADER_REG = regexp.MustCompile("(\\S+):\\s*(\\S*)\r\n")
 var RSP_REG = regexp.MustCompile("HTTP/1.1 (\\d) \\w\r\n(\\s\\S+)\r\n(\\s\\S*)")
-var REQ_REG = regexp.MustCompile("^(GET|PUT|DEL) /([a-fA-F0-9]{32})?(\\?\\S+)? HTTP/1.1\r\n([\\S\\s]*)\r\n([\\S\\s]*)")
+var REQ_REG = regexp.MustCompile("^(GET|POST|DELETE) /([a-fA-F0-9]{32})?(\\?\\S+)? HTTP/1.1\r\n([\\S\\s]*)\r\n([\\S\\s]*)")
 var ARG_REQ = regexp.MustCompile("(\\S+)=(.*)&?")

@@ -186,6 +186,7 @@ func (s *Store) Add(id Key, size int) (item *Item, data []byte) {
 
 	b := s.getBucket(id)
 	disk.lock.Lock()
+	defer disk.lock.Unlock()
 
 	// todo funcion for sg return data, blk, off
 	if size > disk.bSize {
@@ -200,11 +201,10 @@ func (s *Store) Add(id Key, size int) (item *Item, data []byte) {
 
 	data = disk.blocks[disk.curBlock][disk.curOff : disk.curOff+size]
 	disk.curOff += size
-	disk.lock.Unlock()
 
 	b.lock.Lock()
+	defer b.lock.Unlock()
 	b.items[id] = item
-	b.lock.Unlock()
 
 	return item, data
 }
@@ -287,7 +287,7 @@ func (sg *StoreGroup) clear(buckets []bucket) {
 
 		go func(sg *StoreGroup, min int64) {
 			// wait for request which is using buf finish
-			timeout := time.Duration(GConfig["sock.req.timeout"].(int))
+			timeout := time.Duration(GConfig["common.sock.req.timeout"].(int))
 			time.Sleep(time.Second*timeout + 1)
 
 			sg.lock.Lock()
@@ -322,7 +322,7 @@ func (sg *StoreGroup) addBlock(size int) {
 	sg.size += size
 }
 
-func (sg *StoreGroup) init(name string, bSize, cap int, path *string) {
+func (sg *StoreGroup) init(name string, cap, bSize int, path *string) {
 	sg.name = name
 	sg.cap = cap
 	sg.size = 0

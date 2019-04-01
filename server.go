@@ -66,6 +66,7 @@ func (svr *Server) handleTrans(trans *Transaction) (err error) {
 		}
 
 		if err != io.EOF {
+			trans.Err = err
 			Laccess(trans)
 			if err == nil {
 				SetTimeOut(trans.Conn, GConfig["common.sock.idle.timeout"].(int))
