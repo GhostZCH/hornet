@@ -9,14 +9,20 @@ common.http.body.bufsize: 65536
 common.heartbeat.addr: 224.0.0.100:3300
 
 cache.addr: 127.0.0.1:1100
-cache.heartbeat: true
-cache.span_ms: 500
-cache.disk.path: /tmp/
-cache.disk.cap: 10240000
-cache.disk.blocksize: 1024000
+cache.heartbeat_ms: 500
+cache.hdd.meta: /home/hdd/hornet/meta
+cache.hdd.path: /home/hdd/hornet/
+cache.hdd.cap: 10240000
+cache.hdd.blocksize: 1024000
+cache.ssd.meta: /home/ssd/hornet/meta
+cache.ssd.path: /home/ssd/hornet/
+cache.ssd.cap: 10240000
+cache.ssd.blocksize: 1024000
+cache.mem.meta: /dev/shm/hornet/meta
+cache.mem.path: /dev/shm/hornet/
 cache.mem.cap: 10240000
 cache.mem.blocksize: 1024000
-cache.range_blcok: 262144
+cache.range_block: 262144
 cache.http.header.discard:
   - Host
   - User-Agent

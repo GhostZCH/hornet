@@ -3,49 +3,12 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"sync"
 	"syscall"
 	"time"
 )
-
-type HKey [KEY_HASH_LEN]byte
-
-type Key struct {
-	Hash  HKey
-	Range [2]uint32
-}
-
-type CoreItem struct {
-	ID         Key
-	Grp        HKey
-	Block      int64
-	Off        int64
-	Expire     uint32
-	EtagHash   uint32
-	ExpireHash uint32
-	BitMap     uint64
-	Tags       [TAG_LIMIT]uint16
-	BodyLen    uint32
-	HeadLen    uint32
-	RawKeyLen  uint32
-	RawKey     [RAW_KEY_LIMIT]byte
-}
-
-type Item struct {
-	Putting  bool
-	Mem      []byte
-	MemBlock int64
-	Item     CoreItem
-}
-
-type bucket struct {
-	items map[Key]*Item
-	lock  sync.RWMutex
-}
 
 type sHeader struct {
 	Magic   int64
@@ -54,281 +17,213 @@ type sHeader struct {
 	Items   int64
 }
 
-type StoreGroup struct {
+type Store struct {
 	cap      int
-	bSize    int
 	size     int
+	bSize    int
 	curOff   int
 	curBlock int64
-	blocks   map[int64][]byte
-	lock     sync.RWMutex
 	name     string
-	path     *string
+	path     string
+	mpath    string
+	meta     *Meta
+	lock     sync.RWMutex
+	blocks   map[int64][]byte
 }
 
-type Store struct {
-	disk    StoreGroup
-	mem     StoreGroup
-	lock    sync.RWMutex
-	buckets [BUCKET_LIMIT]bucket
+func NewStore(name, mpath, path string, cap, bSize int) *Store {
+	s := &Store{name: name, mpath: mpath, path: path,
+		cap: cap, bSize: bSize, curOff: bSize,
+		blocks: make(map[int64][]byte)}
+	return s
 }
 
-func NewStore() (s *Store) {
-	s = new(Store)
-	path := GConfig["cache.disk.path"].(string)
+func (s *Store) Add(item *Item) []byte {
+	s.meta.Add(item)
 
-	s.mem.init(
-		"MEM",
-		GConfig["cache.mem.cap"].(int),
-		GConfig["cache.mem.blocksize"].(int),
-		nil)
-
-	s.disk.init(
-		"DISK",
-		GConfig["cache.disk.cap"].(int),
-		GConfig["cache.disk.blocksize"].(int),
-		&path)
-
-	for i := 0; i < BUCKET_LIMIT; i++ {
-		s.buckets[i].items = make(map[Key]*Item)
+	size := int(item.Info.HeadLen + item.Info.BodyLen)
+	if size > s.bSize {
+		s.addBlock(size) // single block for big data
+	} else if size+s.curOff > s.bSize {
+		s.addBlock(s.bSize)
 	}
 
+	item.Info.Block = s.curBlock
+	item.Info.Off = int64(s.curOff)
+
+	data := s.blocks[s.curBlock][s.curOff : s.curOff+size]
+	s.curOff += size
+
+	return data
+}
+
+func (s *Store) Get(id Key) (*Item, []byte) {
+	item := s.meta.Get(id)
+	if item == nil {
+		return nil, nil
+	}
+	info := item.Info
+	size := int(info.Off + info.HeadLen + info.BodyLen)
+	data := s.blocks[info.Block][int(info.Off):size]
+	return item, data
+}
+
+func (s *Store) Delete(id Key) {
+	s.meta.Delete(id)
+}
+
+func (s *Store) DeleteBatch(match func(*Item) bool) {
+	s.DeleteBatch(match)
+}
+
+func (s *Store) Close() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	le := binary.LittleEndian
-	mpath := fmt.Sprintf(META_FMT, path)
-	mfile, err := os.Open(mpath)
+	h := sHeader{Magic: MAGIC, Version: META_VERSION}
+	h.Blocks = int64(len(s.blocks))
+
+	blocks := new(bytes.Buffer)
+	for id, _ := range s.blocks {
+		Success(binary.Write(blocks, le, id))
+	}
+
+	items := new(bytes.Buffer)
+	h.Items = int64(s.meta.DumpAll(items))
+
+	tmp := s.mpath + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_RDWR|os.O_CREATE, 0600)
+	Success(err)
+	defer f.Close()
+
+	Success(binary.Write(f, le, h))
+	Success(f.Write(blocks.Bytes()))
+	Success(f.Write(items.Bytes()))
+
+	Success(os.Rename(tmp, s.mpath))
+}
+
+func (s *Store) minBlock() (min int64, data []byte) {
+	min = -1
+	for i, d := range s.blocks {
+		if i < min || min < 0 {
+			min, data = i, d
+		}
+	}
+	return min, data
+}
+
+func (s *Store) clear(timeout int) {
+	for len(s.blocks) >= 0 && s.size > s.cap {
+		min, data := s.minBlock()
+
+		Lwarn(s.name, " delete block ", min, "size =", len(data),
+			"cur-size =", s.size-len(data))
+
+		s.meta.DeleteBatch(func(i *Item) bool {
+			return i.Info.Block == min
+		})
+
+		s.size -= len(data)
+		delete(s.blocks, min)
+
+		go func() {
+			// wait for request which is using buf finish
+			if timeout > 0 {
+				time.Sleep(time.Second * time.Duration(timeout))
+			}
+			s.lock.Lock()
+			defer s.lock.Unlock()
+
+			Success(os.Remove(s.getFileName(min)))
+			Success(syscall.Munmap(data))
+		}()
+	}
+}
+
+func (s *Store) loadBlock(f *os.File, n int) {
+	blocks := make([]int64, n)
+	binary.Read(f, binary.LittleEndian, blocks)
+
+	for _, b := range blocks {
+		name := s.getFileName(b)
+		if st, err := os.Stat(name); err != nil {
+			Lerror(err)
+		} else {
+			s.blocks[b] = mmap(name, int(st.Size()))
+			s.size += int(st.Size())
+		}
+		s.curBlock = b
+	}
+
+	s.clear(0)
+}
+
+func (s *Store) loadItem(f *os.File, n int) {
+	infos := make([]ItemInfo, n)
+	Success(binary.Read(f, binary.LittleEndian, infos))
+	s.meta.AddAll(infos)
+}
+
+func (s *Store) load() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	f, err := os.Open(s.mpath)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			panic(err)
 		}
-		Lwarn("no meta file found")
+		Lwarn(s.name, " no meta file found")
 		return
 	}
 
-	defer mfile.Close()
-	defer os.Remove(mpath)
+	defer f.Close()
+	defer os.Remove(s.mpath)
 
 	var h sHeader
-	Success(binary.Read(mfile, le, &h))
+	Success(binary.Read(f, binary.LittleEndian, &h))
 
 	if h.Magic != MAGIC || h.Version != META_VERSION {
+		Lwarn(s.name, " META_VERSION or MAGIC not fix")
 		return
 	}
 
-	blocks := make([]int64, h.Blocks)
-	binary.Read(mfile, le, blocks)
-
-	for _, b := range blocks {
-		path := fmt.Sprintf(DATA_FMT, *s.disk.path, b)
-		if st, err := os.Stat(path); err != nil {
-			Lerror(err)
-		} else {
-			s.disk.blocks[b] = OpenMmap(path, int(st.Size()))
-			s.disk.size += int(st.Size())
-		}
-	}
-	s.disk.clear(s.buckets[:])
-
-	items := make([]CoreItem, h.Items)
-	Success(binary.Read(mfile, le, items))
-
-	for _, ci := range items {
-		b := s.getBucket(ci.ID)
-		b.items[ci.ID] = &Item{false, nil, 0, ci}
-	}
-
-	return s
+	s.loadBlock(f, int(h.Blocks))
+	s.loadItem(f, int(h.Items))
 }
 
-func (s *Store) Close() {
-	le := binary.LittleEndian
+func (s *Store) addBlock(size int) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 
-	buf := new(bytes.Buffer)
-	h := sHeader{Magic: MAGIC, Version: META_VERSION}
+	now := time.Now().UnixNano()
+	name := s.getFileName(now)
+	s.blocks[s.curBlock] = mmap(name, size)
 
-	h.Blocks = int64(len(s.disk.blocks))
-	for b := 0; b < BUCKET_LIMIT; b++ {
-		bucket := &s.buckets[b]
-		h.Items += int64(len(bucket.items))
-	}
-	Success(binary.Write(buf, le, h))
+	s.curBlock = now
+	s.curOff = 0
+	s.size += size
 
-	for id, _ := range s.disk.blocks {
-		Success(binary.Write(buf, le, id))
-	}
-
-	for b := 0; b < BUCKET_LIMIT; b++ {
-		bucket := &s.buckets[b]
-		for _, i := range bucket.items {
-			Success(binary.Write(buf, le, i.Item))
-		}
-	}
-
-	mpath := fmt.Sprintf(META_FMT, *s.disk.path)
-	mpath_tmp := mpath + ".tmp"
-
-	mfile, err := os.OpenFile(mpath_tmp, os.O_RDWR|os.O_CREATE, 0600)
-	Success(err)
-
-	defer mfile.Close()
-
-	d := buf.Bytes()
-	if n, err := mfile.Write(d); n == len(d) && err == nil {
-		if os.Rename(mpath_tmp, mpath) == nil {
-			Lwarn("store closed successed")
-		}
-	}
+	timeout := GConfig["common.sock.req.timeout"].(int)
+	s.clear(timeout + 1)
 }
 
-func (s *Store) Add(id Key, size int) (item *Item, data []byte) {
-	item = &Item{true, nil, 0, CoreItem{}}
-	item.Item.ID = id
-	disk := &s.disk
-
-	b := s.getBucket(id)
-	disk.lock.Lock()
-	defer disk.lock.Unlock()
-
-	// todo funcion for sg return data, blk, off
-	if size > disk.bSize {
-		disk.addBlock(size) // single block for big data
-	} else if size+disk.curOff > disk.bSize {
-		disk.addBlock(disk.bSize)
-	}
-	disk.clear(s.buckets[:])
-
-	item.Item.Block = disk.curBlock
-	item.Item.Off = int64(disk.curOff)
-
-	data = disk.blocks[disk.curBlock][disk.curOff : disk.curOff+size]
-	disk.curOff += size
-
-	b.lock.Lock()
-	defer b.lock.Unlock()
-	b.items[id] = item
-
-	return item, data
+func (s *Store) getFileName(block int64) string {
+	return fmt.Sprintf(FILE_NAME_FMT, s.path, s.curBlock)
 }
 
-func (s *Store) Get(id Key) (*Item, []byte) {
-	b := s.getBucket(id)
-	b.lock.RLock()
-	defer b.lock.RUnlock()
+func mmap(path string, size int) []byte {
+	f, ferr := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	Success(ferr)
+	defer f.Close()
 
-	if i, ok := b.items[id]; ok && !i.Putting {
-		if i.Mem != nil {
-			return i, i.Mem
-		}
-		end := i.Item.Off + int64(i.Item.HeadLen+i.Item.BodyLen)
-		return i, s.disk.blocks[i.Item.Block][i.Item.Off:end]
-	}
+	f.Truncate(int64(size))
 
-	return nil, nil
-}
+	flag := syscall.PROT_READ | syscall.PROT_WRITE
+	d, merr := syscall.Mmap(int(f.Fd()), 0, size, flag, syscall.MAP_SHARED)
+	Success(merr)
 
-func (s *Store) Del(id Key) {
-	b := s.getBucket(id)
-	b.lock.Lock()
-	defer b.lock.Unlock()
-	delete(b.items, id)
-}
-
-func (s *Store) DelByGroup(g HKey) {
-	for i := 0; i < BUCKET_LIMIT; i++ {
-		b := &s.buckets[i]
-		b.lock.Lock()
-		for id, item := range b.items {
-			if item.Item.Grp == g {
-				delete(b.items, id)
-			}
-		}
-		b.lock.Unlock()
-	}
-}
-
-func (s *Store) DelByRawKey(reg *regexp.Regexp) {
-	for i := 0; i < BUCKET_LIMIT; i++ {
-		b := &s.buckets[i]
-		b.lock.Lock()
-		for id, item := range b.items {
-			if reg.Match(item.Item.RawKey[:item.Item.RawKeyLen]) {
-				delete(b.items, id)
-			}
-		}
-		b.lock.Unlock()
-	}
-}
-
-func (sg *StoreGroup) clear(buckets []bucket) {
-	for sg.size > sg.cap {
-		min := int64(-1)
-		for id, _ := range sg.blocks {
-			if id < min || min < 0 {
-				min = id
-			}
-		}
-
-		if min < 0 {
-			panic(errors.New("Can not find block to remove"))
-		}
-
-		Lwarn("delete block ", sg.name, sg.size, len(sg.blocks[min]))
-
-		for i := 0; i < BUCKET_LIMIT; i++ {
-			buckets[i].lock.Lock()
-			for id, item := range buckets[i].items {
-				if item.Item.Block == min {
-					delete(buckets[i].items, id)
-				}
-			}
-			buckets[i].lock.Unlock()
-		}
-
-		sg.size -= len(sg.blocks[min])
-
-		go func(sg *StoreGroup, min int64) {
-			// wait for request which is using buf finish
-			timeout := time.Duration(GConfig["common.sock.req.timeout"].(int))
-			time.Sleep(time.Second*timeout + 1)
-
-			sg.lock.Lock()
-			defer sg.lock.Unlock()
-
-			data := sg.blocks[min]
-			delete(sg.blocks, min)
-			if sg.path != nil {
-				path := fmt.Sprintf(DATA_FMT, *sg.path, min)
-				Success(os.Remove(path))
-				syscall.Munmap(data)
-			}
-
-		}(sg, min)
-	}
-}
-
-func (s *Store) getBucket(id Key) *bucket {
-	idx := int(id.Hash[0]) % BUCKET_LIMIT
-	return &s.buckets[idx]
-}
-
-func (sg *StoreGroup) addBlock(size int) {
-	sg.curBlock = time.Now().UnixNano()
-	sg.curOff = 0
-	if sg.path != nil {
-		name := fmt.Sprintf(DATA_FMT, *sg.path, sg.curBlock)
-		sg.blocks[sg.curBlock] = OpenMmap(name, size)
-	} else {
-		sg.blocks[sg.curBlock] = make([]byte, size)
-	}
-	sg.size += size
-}
-
-func (sg *StoreGroup) init(name string, cap, bSize int, path *string) {
-	sg.name = name
-	sg.cap = cap
-	sg.size = 0
-	sg.bSize = bSize
-	sg.curOff = bSize
-	sg.curBlock = 0
-	sg.blocks = map[int64][]byte{}
-	sg.path = path
+	return d
 }

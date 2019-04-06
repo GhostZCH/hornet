@@ -10,7 +10,7 @@ import (
 )
 
 type CacheHandler struct {
-	store     *Store
+	store     *StoreManager
 	heartBeat *net.UDPConn
 }
 
@@ -21,7 +21,7 @@ func NewCacheHandler() (h *CacheHandler) {
 	Success(err)
 
 	h = new(CacheHandler)
-	h.store = NewStore()
+	h.store = NewStoreManager()
 	h.heartBeat, err = net.DialUDP("udp", nil, addr)
 	Success(err)
 
@@ -39,7 +39,7 @@ func (h *CacheHandler) GetListener() string {
 func (h *CacheHandler) Start() {
 	go func() {
 		msg := []byte(GConfig["cache.addr"].(string))
-		span := time.Duration(GConfig["cache.span_ms"].(int)) * time.Millisecond
+		span := time.Duration(GConfig["cache.heartbeat_ms"].(int)) * time.Millisecond
 		for {
 			if _, e := h.heartBeat.Write(msg); e != nil {
 				Lerror("heartBeat.Write", e)
@@ -92,8 +92,8 @@ func (h *CacheHandler) get(trans *Transaction) {
 	}
 
 	trans.Rsp.Status = 200
-	trans.Rsp.Heads = append(trans.Rsp.Heads, data[:item.Item.HeadLen])
-	trans.Rsp.Bodys = append(trans.Rsp.Bodys, data[item.Item.HeadLen:])
+	trans.Rsp.Heads = append(trans.Rsp.Heads, data[:item.Info.HeadLen])
+	trans.Rsp.Bodys = append(trans.Rsp.Bodys, data[item.Info.HeadLen:])
 }
 
 func (h *CacheHandler) del(trans *Transaction) {
@@ -165,13 +165,16 @@ func (h *CacheHandler) put(trans *Transaction) {
 	}
 
 	head := buf.Bytes()
-	item, data := h.store.Add(id, len(head)+cl)
-	item.Item.BodyLen = uint32(cl)
-	item.Item.HeadLen = uint32(len(head))
-	item.Item.Expire = 0 //TODO  Expire & etag
-	item.Item.Grp = g
-	item.Item.RawKeyLen = uint32(len(raw))
-	copy(item.Item.RawKey[:], raw)
+	item := &Item{false, &ItemInfo{}}
+	item.Info.BodyLen = int64(cl)
+	item.Info.HeadLen = int64(len(head))
+	item.Info.Expire = 0 //TODO  Expire & etag
+	item.Info.Grp = g
+	item.Info.RawKeyLen = uint32(len(raw))
+
+	copy(item.Info.RawKey[:], raw)
+
+	data := h.store.Add(item)
 
 	copy(data, head)
 	data = data[len(head):]
