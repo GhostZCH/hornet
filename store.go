@@ -34,7 +34,7 @@ type Store struct {
 func NewStore(name, mpath, path string, cap, bSize int) *Store {
 	s := &Store{name: name, mpath: mpath, path: path,
 		cap: cap, bSize: bSize, curOff: bSize,
-		blocks: make(map[int64][]byte)}
+		blocks: make(map[int64][]byte), meta: NewMeta()}
 	return s
 }
 
@@ -57,15 +57,16 @@ func (s *Store) Add(item *Item) []byte {
 	return data
 }
 
-func (s *Store) Get(id Key) (*Item, []byte) {
+func (s *Store) Get(id Key) (*Item, []byte, string) {
 	item := s.meta.Get(id)
 	if item == nil {
-		return nil, nil
+		return nil, nil, ""
 	}
 	info := item.Info
 	size := int(info.Off + info.HeadLen + info.BodyLen)
 	data := s.blocks[info.Block][int(info.Off):size]
-	return item, data
+
+	return item, data, s.name
 }
 
 func (s *Store) Delete(id Key) {
@@ -200,7 +201,7 @@ func (s *Store) addBlock(size int) {
 
 	now := time.Now().UnixNano()
 	name := s.getFileName(now)
-	s.blocks[s.curBlock] = mmap(name, size)
+	s.blocks[now] = mmap(name, size)
 
 	s.curBlock = now
 	s.curOff = 0

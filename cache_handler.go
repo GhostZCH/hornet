@@ -85,7 +85,7 @@ func (h *CacheHandler) get(trans *Transaction) {
 	// TODO range /xxxxxxxxxxxxxxxx[?start=100&end=500]
 	// 可能要跨越多个块，第一个只保存head, head不存在就算删除，head.range = 0
 
-	item, data := h.store.Get(key)
+	item, data, cache := h.store.Get(key)
 	if item == nil {
 		trans.Rsp.Status = 404
 		return
@@ -93,6 +93,7 @@ func (h *CacheHandler) get(trans *Transaction) {
 
 	trans.Rsp.Status = 200
 	trans.Rsp.Heads = append(trans.Rsp.Heads, data[:item.Info.HeadLen])
+	trans.Rsp.Heads = append(trans.Rsp.Heads, []byte("Hornet: hit-"+cache))
 	trans.Rsp.Bodys = append(trans.Rsp.Bodys, data[item.Info.HeadLen:])
 }
 
