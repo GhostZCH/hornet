@@ -63,6 +63,57 @@ hornet有两种启动模式，cache和proxy。//TODO 附图
 
 + 每个tag是一个不超过65535的整数，默认为0。可以用来表示文件类型，子文件夹，子用户等属性, 协议，子域名。删除时65535为通配符，不检测这个设置
 
+## 配置
+
+### 参数
+
+    Usage of ./hornet:
+    -conf string
+            conf file path (default "hornet.yaml")
+    -mode string
+            start mode cache or proxy (default "cache")
+
+### 配置文件
+
+    common.log.path: /tmp/message
+    common.log.level: info
+    common.accesslog.path: /tmp/access
+    common.accesslog.buf: 4096
+    common.sock.req.timeout: 3
+    common.sock.idle.timeout: 60
+    common.http.header.maxlen: 4096
+    common.http.body.bufsize: 65536
+    common.heartbeat.addr: 224.0.0.100:3300
+
+    cache.addr: 127.0.0.1:1100
+    cache.heartbeat_ms: 500
+    cache.hdd.meta: /home/hdd/hornet/meta
+    cache.hdd.path: /home/hdd/hornet/
+    cache.hdd.cap: 10240000
+    cache.hdd.blocksize: 1024000
+    cache.ssd.meta: /home/ssd/hornet/meta
+    cache.ssd.path: /home/ssd/hornet/
+    cache.ssd.cap: 10240000
+    cache.ssd.blocksize: 1024000
+    cache.mem.meta: /dev/shm/hornet/meta
+    cache.mem.path: /dev/shm/hornet/
+    cache.mem.cap: 10240000
+    cache.mem.blocksize: 1024000
+    cache.range_block: 262144
+    cache.http.header.discard:
+        - Host
+        - User-Agent
+        - Expect
+        - Content-Length
+        - Hornet-Raw-Key
+        - Hornet-Group
+
+    proxy.fault_ms: 2000
+    proxy.addr: 127.0.0.1:2200
+    proxy.keepalive.count: 10
+
+
+
 ## 设计
 
 //TODO
