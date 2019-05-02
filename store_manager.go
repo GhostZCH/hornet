@@ -1,9 +1,5 @@
 package main
 
-import (
-	"regexp"
-)
-
 const (
 	IDX_MEM = iota
 	IDX_SSD
@@ -77,25 +73,13 @@ func (sm *StoreManager) Get(id Key) (*Item, []byte, string) {
 	return nil, nil, ""
 }
 
-func (sm *StoreManager) Del(id Key) {
+func (sm *StoreManager) Delete(id Key) {
 	for _, s := range sm.stores {
 		s.Delete(id)
 	}
 }
 
-func (sm *StoreManager) DelByGroup(g HKey) {
-	sm.delBatch(func(item *Item) bool {
-		return item.Info.Grp == g
-	})
-}
-
-func (sm *StoreManager) DelByRawKey(reg *regexp.Regexp) {
-	sm.delBatch(func(item *Item) bool {
-		return reg.Match(item.Info.RawKey[:item.Info.RawKeyLen])
-	})
-}
-
-func (sm *StoreManager) delBatch(match func(*Item) bool) {
+func (sm *StoreManager) DeleteBatch(match func(*Item) bool) {
 	for _, s := range sm.stores {
 		s.DeleteBatch(match)
 	}

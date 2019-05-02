@@ -32,7 +32,7 @@
 
 ## 部署方式
 
-hornet有两种启动模式，cache和proxy。//TODO 附图
+hornet有两种启动模式，cache和proxy。
 
 + 单机部署，最简易的方式
 + 使用者做负载均衡，多个hornet以cache模式启动，通过udp多播广播自己的服务地址，客户端（例如nginx）根据业务逻辑，控制每个访问具体使用哪个hornet,一般简易使用一致性hash
@@ -45,7 +45,7 @@ hornet有两种启动模式，cache和proxy。//TODO 附图
 
 + 通过http请求进行缓存的读取，添加和删除功能。
 + 为了方便定位问题，通过`Hornet-Log`头传递一个信息被打印在访问日志中
-+ 仅支持　HTTP/1.1　
++ 仅支持HTTP-1.1
 + 默认使用keepalive
 + 处理过程中出现错误直接断开连接并将错误原因写入日志，并不返回客户端
 
@@ -90,6 +90,8 @@ hornet有两种启动模式，cache和proxy。//TODO 附图
             start mode cache or proxy (default "cache")
 
 ### 配置文件
+
+通过启动参数conf配置一个yaml文件作为路径，同时会读取一个通路径下｀local_｀开头文件作为本地配置覆盖主配置，方便大规模部署时添加少了本地配置。例如：conf路径为｀/path/to/conf/hornet.yaml｀, 则会读取一个｀/path/to/conf/local_hornet.yaml｀作为本地配置。
 
     # 通用配置
     common.log.path: /tmp/message
@@ -140,17 +142,16 @@ hornet有两种启动模式，cache和proxy。//TODO 附图
 
 ### 启动流程
 
+//　重启画
 ![hornet-start](docs/start-end.png)
 
 ### 文件系统
 
-用N个大文件组成一个类似环形缓冲区的文件系统
-
-+ 由一个meta文件记录缓存对象信息，启动时加载到内存
-+ 多个大小固定的文件，每个保存一系列的文件，序号递增
-+ 删除文件只删除meta中的记录
-+ 超过文件大小限制的单独缓存文件
-+ 顺序写入，写满一个文件后，打开新文件
++ 每一级文件缓存，用N个大文件(Block)组成一个FIFO文件系统, 可以在mem,ssd,hdd中配置一到多个缓存级别
++ 内存缓存使用/dev/shm路径下建立文件使用相同的管理逻辑，重启hornet不不要重新加载内存缓存中的数据(重启机器会丢失)
++ 每一级文件缓存，由一个meta文件记录缓存对象信息，启动时加载到内存并删除meta文件，正常退出会重新生成meta文件
++ 写入时追加到最后一个文件末尾，超过文件大小限制的单独缓存文件, 写满一个文件后，打开新文件
++ 删除文件只删除meta中的记录，
 
 ## 技术路线
 

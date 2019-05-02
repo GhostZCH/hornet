@@ -1,5 +1,5 @@
 common.log.path: /tmp/message
-common.log.level: info
+common.log.level: warn
 common.accesslog.path: /tmp/access
 common.accesslog.buf: 4096
 common.sock.req.timeout: 3

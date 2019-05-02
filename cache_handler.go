@@ -70,7 +70,7 @@ func (h *CacheHandler) Handle(trans *Transaction) {
 	case "DELETE":
 		h.del(trans)
 	case "POST":
-		h.put(trans)
+		h.post(trans)
 	}
 
 	trans.Rsp.Send(trans.Conn, nil)
@@ -103,7 +103,7 @@ func (h *CacheHandler) del(trans *Transaction) {
 	if trans.Req.Path != nil {
 		var id Key
 		id.Hash = DecodeKey(trans.Req.Path)
-		h.store.Del(id)
+		h.store.Delete(id)
 		return
 	}
 
@@ -111,20 +111,24 @@ func (h *CacheHandler) del(trans *Transaction) {
 
 	if hdr, ok := trans.Req.Headers["Hornet-Group"]; ok {
 		g := DecodeKey(hdr[2])
-		h.store.DelByGroup(g)
+		h.store.DeleteBatch(func(item *Item) bool {
+			return item.Info.Grp == g
+		})
 		return
 	}
 
 	if hdr, ok := trans.Req.Headers["Hornet-Regexp"]; ok {
 		reg := regexp.MustCompile(string(hdr[2]))
-		h.store.DelByRawKey(reg)
+		h.store.DeleteBatch(func(item *Item) bool {
+			return reg.Match(item.Info.RawKey[:item.Info.RawKeyLen])
+		})
 		return
 	}
 
 	panic(errors.New("NO_DEL_PARAMS"))
 }
 
-func (h *CacheHandler) put(trans *Transaction) {
+func (h *CacheHandler) post(trans *Transaction) {
 	trans.Req.ParseArgs()
 	trans.Req.ParseHeaders()
 
@@ -184,7 +188,7 @@ func (h *CacheHandler) put(trans *Transaction) {
 	data = data[len(trans.Req.Body):]
 
 	if n, e := trans.Conn.Read(data); n != len(data) || e != nil {
-		h.store.Del(id)
+		h.store.Delete(id)
 		panic(e) // n != len(data)
 	}
 
