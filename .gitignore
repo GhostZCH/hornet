@@ -1,3 +1,6 @@
 hornet
+debug
 .vscode
 local_*
+*.pyc
+.idea

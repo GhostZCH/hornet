@@ -24,7 +24,7 @@ func (r *Request) Init() {
 func (r *Request) ParseBasic(buf []byte) {
 	m := REQ_REG.FindSubmatch(buf)
 	if len(m) == 0 {
-		panic(errors.New("REQ_FORMＡT_ERROR"))
+		panic(errors.New("REQ_FORMAT_ERROR"))
 	}
 
 	r.Method, r.Path, r.Arg, r.Head, r.Body = m[1], m[2], m[3], m[4], m[5]

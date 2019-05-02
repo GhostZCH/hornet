@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net"
 	"regexp"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 )
 
 type CacheHandler struct {
+	name      string
 	store     *StoreManager
 	heartBeat *net.UDPConn
 }
@@ -21,6 +23,7 @@ func NewCacheHandler() (h *CacheHandler) {
 	Success(err)
 
 	h = new(CacheHandler)
+	h.name = GConfig["common.name"].(string)
 	h.store = NewStoreManager()
 	h.heartBeat, err = net.DialUDP("udp", nil, addr)
 	Success(err)
@@ -92,8 +95,8 @@ func (h *CacheHandler) get(trans *Transaction) {
 	}
 
 	trans.Rsp.Status = 200
+	trans.Rsp.Heads = append(trans.Rsp.Heads, []byte(fmt.Sprintf("X-Via-Cache: %s %s\r\n", h.name, *cache)))
 	trans.Rsp.Heads = append(trans.Rsp.Heads, data[:item.Info.HeadLen])
-	trans.Rsp.Heads = append(trans.Rsp.Heads, []byte("Hornet: hit-"+cache))
 	trans.Rsp.Bodys = append(trans.Rsp.Bodys, data[item.Info.HeadLen:])
 }
 
@@ -132,32 +135,31 @@ func (h *CacheHandler) post(trans *Transaction) {
 	trans.Req.ParseArgs()
 	trans.Req.ParseHeaders()
 
-	var id Key
-	var g HKey
-	var cl int
-	var raw []byte
+	item := &Item{true, &ItemInfo{}}
+	info := item.Info
 
 	// TODO range
 	if trans.Req.Path != nil {
-		id.Hash = DecodeKey(trans.Req.Path)
+		info.ID.Hash = DecodeKey(trans.Req.Path)
 	}
 
 	if hdr, ok := trans.Req.Headers["Hornet-Group"]; ok {
-		g = DecodeKey(hdr[2])
+		info.Grp = DecodeKey(hdr[2])
 	}
 
 	if h, ok := trans.Req.Headers["Content-Length"]; ok {
 		if n, e := strconv.Atoi(string(h[2])); e != nil {
 			panic(e)
 		} else {
-			cl = n
+			info.BodyLen = int64(n)
 		}
 	} else {
 		panic(errors.New("CONTENT_LEN_NOT_SET"))
 	}
 
 	if h, ok := trans.Req.Headers["Hornet-Raw-Key"]; ok {
-		raw = h[2]
+		info.RawKeyLen = uint32(len(h[2]))
+		copy(item.Info.RawKey[:], h[2])
 	}
 
 	for _, h := range GConfig["cache.http.header.discard"].([]interface{}) {
@@ -170,14 +172,8 @@ func (h *CacheHandler) post(trans *Transaction) {
 	}
 
 	head := buf.Bytes()
-	item := &Item{false, &ItemInfo{}}
-	item.Info.BodyLen = int64(cl)
 	item.Info.HeadLen = int64(len(head))
 	item.Info.Expire = 0 //TODO  Expire & etag
-	item.Info.Grp = g
-	item.Info.RawKeyLen = uint32(len(raw))
-
-	copy(item.Info.RawKey[:], raw)
 
 	data := h.store.Add(item)
 
@@ -188,7 +184,7 @@ func (h *CacheHandler) post(trans *Transaction) {
 	data = data[len(trans.Req.Body):]
 
 	if n, e := trans.Conn.Read(data); n != len(data) || e != nil {
-		h.store.Delete(id)
+		h.store.Delete(info.ID)
 		panic(e) // n != len(data)
 	}
 

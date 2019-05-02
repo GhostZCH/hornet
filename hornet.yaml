@@ -1,3 +1,4 @@
+common.name: Hornet
 common.log.path: /tmp/message
 common.log.level: warn
 common.accesslog.path: /tmp/access

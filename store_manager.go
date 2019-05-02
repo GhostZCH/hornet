@@ -57,20 +57,22 @@ func (sm *StoreManager) Add(item *Item) []byte {
 	return nil
 }
 
-func (sm *StoreManager) Get(id Key) (*Item, []byte, string) {
+func (sm *StoreManager) Get(id Key) (*Item, []byte, *string) {
 	for i, s := range sm.stores {
 		if item, data, name := s.Get(id); item != nil {
-			for j := i - 1; j >= 0 && sm.stores[j] != nil; j-- {
-				new := *item
-				buf := sm.stores[j].Add(&new)
-				copy(buf, data)
-				break
+			for j := i - 1; j >= 0; j-- {
+				if sm.stores[j] != nil {
+					new := *item
+					buf := sm.stores[j].Add(&new)
+					copy(buf, data)
+					break
+				}
 			}
 
 			return item, data, name
 		}
 	}
-	return nil, nil, ""
+	return nil, nil, nil
 }
 
 func (sm *StoreManager) Delete(id Key) {

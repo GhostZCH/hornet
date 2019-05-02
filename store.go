@@ -35,6 +35,7 @@ func NewStore(name, mpath, path string, cap, bSize int) *Store {
 	s := &Store{name: name, mpath: mpath, path: path,
 		cap: cap, bSize: bSize, curOff: bSize,
 		blocks: make(map[int64][]byte), meta: NewMeta()}
+	s.load()
 	return s
 }
 
@@ -57,16 +58,16 @@ func (s *Store) Add(item *Item) []byte {
 	return data
 }
 
-func (s *Store) Get(id Key) (*Item, []byte, string) {
+func (s *Store) Get(id Key) (*Item, []byte, *string) {
 	item := s.meta.Get(id)
 	if item == nil {
-		return nil, nil, ""
+		return nil, nil, nil
 	}
 	info := item.Info
 	size := int(info.Off + info.HeadLen + info.BodyLen)
 	data := s.blocks[info.Block][int(info.Off):size]
 
-	return item, data, s.name
+	return item, data, &s.name
 }
 
 func (s *Store) Delete(id Key) {
@@ -212,7 +213,7 @@ func (s *Store) addBlock(size int) {
 }
 
 func (s *Store) getFileName(block int64) string {
-	return fmt.Sprintf(FILE_NAME_FMT, s.path, s.curBlock)
+	return fmt.Sprintf(FILE_NAME_FMT, s.path, block)
 }
 
 func mmap(path string, size int) []byte {
