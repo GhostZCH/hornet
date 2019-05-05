@@ -9,8 +9,8 @@ import (
 type Transaction struct {
 	Conn      *net.TCPConn
 	Ctx       interface{}
-	Req       Request
-	Rsp       Respose
+	Req       InRequest
+	Rsp       OutRespose
 	Time      time.Time
 	Err       error
 	ClientMsg string
@@ -20,16 +20,14 @@ type Transaction struct {
 func NewTrans(c *net.TCPConn, ctx interface{}) *Transaction {
 	t := new(Transaction)
 	t.Conn = c
-	t.Time = time.Now()
-	t.Req.Init()
-	t.Rsp.Init()
 	t.Ctx = ctx
+	t.Time = time.Now()
 	return t
 }
 
 func (t *Transaction) String() string {
-	return fmt.Sprintf("%d %d %s %s %s %s %s %d [%s] [%s] [%v]\n",
+	return fmt.Sprintf("%d\t%d\t%d\t%s\t%s\t%s\t%d\t%s\t%s\t%v\n",
 		VERSION, t.Time.Unix(), time.Since(t.Time),
-		t.Req.Method, t.Req.Path, t.Req.Arg, t.Conn.RemoteAddr(),
+		t.Req.Method, t.Req.Path, t.Conn.RemoteAddr(),
 		t.Rsp.Status, t.ClientMsg, t.SvrMsg, t.Err)
 }

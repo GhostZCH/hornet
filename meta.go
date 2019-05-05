@@ -10,23 +10,23 @@ type HKey [KEY_HASH_LEN]byte
 
 type Key struct {
 	Hash  HKey
-	Range [2]uint32
+	Range uint32
 }
 
 type ItemInfo struct {
 	ID         Key
-	Grp        HKey
 	Block      int64
 	Off        int64
 	Expire     int64
-	EtagHash   uint32
-	ExpireHash uint32
-	BitMap     uint64
 	BodyLen    int64
 	HeadLen    int64
+	EtagHash   uint32
+	ExpireHash uint32
+	Grp        HKey
+	BitMap     uint32
+	Tag        uint32
 	RawKeyLen  uint32
 	RawKey     [RAW_KEY_LIMIT]byte
-	Tags       [TAG_LIMIT]uint16
 }
 
 type Item struct {

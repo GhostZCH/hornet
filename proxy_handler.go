@@ -18,7 +18,7 @@ type BackEnd struct {
 type ProxyHandler struct {
 	backEnds  map[string]*BackEnd
 	heartBeat *net.UDPConn
-	crcle     *ConstHash
+	hash      *ConstHash
 	lock      sync.RWMutex
 }
 
@@ -57,7 +57,8 @@ func (ph *ProxyHandler) Handle(trans *Transaction) {
 	n, err := conn.Read(buf)
 	Success(err)
 
-	trans.Req.ParseBasic(buf[:n])
+	trans.Req.Recv = buf[:n]
+	trans.Req.Parse(false)
 
 	if trans.Req.Path == nil {
 		// TODO broadcast del
@@ -66,7 +67,7 @@ func (ph *ProxyHandler) Handle(trans *Transaction) {
 	key := DecodeKey(trans.Req.Path)
 
 	ph.lock.RLock()
-	back := ph.crcle.Get(crc32.ChecksumIEEE(key[:])).(*BackEnd)
+	back := ph.hash.Get(crc32.ChecksumIEEE(key[:])).(*BackEnd)
 	ph.lock.RUnlock()
 
 	var upstream *net.TCPConn
@@ -151,7 +152,7 @@ func (h *ProxyHandler) update() {
 			}
 		}
 
-		h.crcle = NewConstHash(32, svrs)
+		h.hash = NewConstHash(32, svrs)
 		h.lock.Unlock()
 	}
 }

@@ -1,68 +1,55 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net"
 	"strconv"
 )
 
-type Respose struct {
+type InRespose struct {
 	Status  int
+	Recv    []byte
 	Head    []byte
 	Body    []byte
-	InHeads map[string][][]byte
-	Heads   [][]byte
-	Bodys   [][]byte
+	Headers map[string][][]byte
 }
 
-func (r *Respose) Init() {
-	r.InHeads = make(map[string][][]byte)
-}
-
-func (r *Respose) ParseBasic(buf []byte) {
+func (r *InRespose) Parse(headers bool) {
 	var err error
 
-	m := RSP_REG.FindSubmatch(buf)
+	m := RSP_REG.FindSubmatch(r.Recv)
 	if len(m) == 0 {
-		panic(errors.New("RSP_FORMＡT_ERROR"))
+		panic(errors.New("RSP_FORMAT_ERROR"))
 	}
 
 	r.Head, r.Body = m[2], m[3]
 	r.Status, err = strconv.Atoi(string(m[1]))
 	Success(err)
-}
 
-func (r *Respose) ParseHeaders() {
-	headers := HEADER_REG.FindAllSubmatch(r.Head, -1)
-	for _, h := range headers {
-		r.InHeads[string(h[0])] = h
+	// 复用
+	if headers {
+		r.Headers = make(map[string][][]byte)
+		headers := HEADER_REG.FindAllSubmatch(r.Head, -1)
+		for _, h := range headers {
+			r.Headers[string(bytes.ToLower(h[1]))] = h
+		}
 	}
 }
 
-func (r *Respose) Send(conn *net.TCPConn, buf []byte) {
-	conn.SetNoDelay(false)
-	defer conn.SetNoDelay(true)
+type OutRespose struct {
+	Status  int
+	Headers [][]byte
+	Bodys   [][]byte
+}
 
-	if buf != nil {
-		Success(conn.Write(buf))
-		return
-	}
-
-	bodyLen := 0
+func (r *OutRespose) Send(conn *net.TCPConn) int {
+	cl := 0
 	for _, b := range r.Bodys {
-		bodyLen += len(b)
+		cl += len(b)
 	}
 
-	Success(fmt.Fprintf(conn, RSP_FORMAT, RSP_MAP[r.Status], bodyLen))
-
-	for _, b := range r.Heads {
-		Success(conn.Write(b))
-	}
-
-	Success(conn.Write(HTTP_END))
-
-	for _, b := range r.Bodys {
-		Success(conn.Write(b))
-	}
+	per := []byte(fmt.Sprintf(RSP_FORMAT, RSP_MAP[r.Status], cl))
+	return SendHttp(conn, per, r.Headers, r.Bodys)
 }

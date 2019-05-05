@@ -12,8 +12,8 @@ const (
 	KEY_HASH_LEN  int    = 16
 	RAW_KEY_LIMIT int    = 128
 	BUCKET_LIMIT  int    = 256
-	TAG_LIMIT     int    = 4
-	REQ_FORMAT    string = "%s /%s%s HTTP/1.1\r\n"
+	RANGE_BLOCK   int    = 256 * 1204
+	REQ_FORMAT    string = "%s /%s HTTP/1.1\r\n"
 	RSP_FORMAT    string = "HTTP/1.1 %s\r\nServer: Hornet\r\nConnection: keep-alive\r\nContent-Length: %d\r\n"
 )
 
@@ -22,6 +22,5 @@ var HTTP_SEMICOLON = []byte(": ")
 var RSP_MAP = map[int]string{200: "200 OK", 201: "201 Created", 404: "404 Not Found"}
 
 var HEADER_REG = regexp.MustCompile("(\\S+):\\s*(\\S*)\r\n")
-var RSP_REG = regexp.MustCompile("HTTP/1.1 (\\d) \\w\r\n(\\s\\S+)\r\n(\\s\\S*)")
-var REQ_REG = regexp.MustCompile("^(GET|POST|DELETE) /([a-fA-F0-9]{32})?(\\?\\S+)? HTTP/1.1\r\n([\\S\\s]*)\r\n([\\S\\s]*)")
-var ARG_REQ = regexp.MustCompile("(\\S+)=(.*)&?")
+var RSP_REG = regexp.MustCompile("HTTP/1.1 (\\d+) \\w+\r\n([\\S\\s]*)\r\n([\\S\\s]*)")
+var REQ_REG = regexp.MustCompile("^(GET|POST|DELETE) /([a-fA-F0-9]{32})? HTTP/1.1\r\n([\\S\\s]*)\r\n([\\S\\s]*)")

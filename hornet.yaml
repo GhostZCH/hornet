@@ -23,14 +23,17 @@ cache.mem.meta: /dev/shm/hornet/meta
 cache.mem.path: /dev/shm/hornet/
 cache.mem.cap: 10240000
 cache.mem.blocksize: 1024000
-cache.range_block: 262144
+cache.upstream: off
+cache.upstream.addr: 127.0.0.1
+cache.upstream.keep: 20
+cache.upstream.timeout: 10
+# 必须小写
 cache.http.header.discard:
-  - Host
-  - User-Agent
-  - Expect
-  - Content-Length
-  - Hornet-Raw-Key
-  - Hornet-Group
+  - host
+  - user-agent
+  - expect
+  - content-length
+  - connection
 
 proxy.fault_ms: 2000
 proxy.addr: 127.0.0.1:2200

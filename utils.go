@@ -2,16 +2,20 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/hex"
 	"errors"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
+
+	"gopkg.in/yaml.v2"
 )
 
 type Logger struct {
@@ -186,4 +190,85 @@ func DecodeKey(buf []byte) HKey {
 		panic(errors.New("ID_FORMAR_ERROR"))
 	}
 	return key
+}
+
+func SendHttp(conn *net.TCPConn, per []byte, headers [][]byte, bodys [][]byte) int {
+	var err error
+	sum, n := 0, 0
+
+	conn.SetNoDelay(false)
+	defer conn.SetNoDelay(true)
+
+	bodyLen := 0
+	for _, b := range bodys {
+		bodyLen += len(b)
+	}
+
+	n, err = conn.Write(per)
+	Success(err)
+	sum += n
+
+	for _, b := range headers {
+		n, err = conn.Write(b)
+		Success(err)
+		sum += n
+	}
+
+	Success(conn.Write(HTTP_END))
+	sum += len(HTTP_END)
+
+	for _, b := range bodys {
+		n, err = conn.Write(b)
+		Success(err)
+		sum += n
+	}
+
+	return sum
+}
+
+func GenerateItem(headers map[string][][]byte) (*Item, []byte) {
+	item := &Item{true, &ItemInfo{}}
+	info := item.Info
+
+	if hdr, ok := headers["hornet-group"]; ok {
+		info.Grp = DecodeKey(hdr[2])
+	}
+
+	if h, ok := headers["content-length"]; ok {
+		if n, e := strconv.Atoi(string(h[2])); e != nil {
+			panic(e)
+		} else {
+			info.BodyLen = int64(n)
+		}
+	} else {
+		panic(errors.New("CONTENT_LEN_NOT_SET"))
+	}
+
+	if h, ok := headers["hornet-raw-key"]; ok {
+		info.RawKeyLen = uint32(len(h[2]))
+		copy(item.Info.RawKey[:], h[2])
+	}
+
+	for _, h := range GConfig["cache.http.header.discard"].([]interface{}) {
+		delete(headers, h.(string))
+	}
+
+	buf := new(bytes.Buffer)
+	for k, v := range headers {
+		if !strings.HasPrefix(k, "hornet") {
+			buf.Write(v[0])
+		}
+	}
+
+	head := buf.Bytes()
+
+	info.HeadLen = int64(len(head))
+	info.Expire = 999999999999999999
+
+	//TODO  Expire
+	//TODO  etag
+	//TODO  tags
+	//TODO  bitmap
+
+	return item, buf.Bytes()
 }

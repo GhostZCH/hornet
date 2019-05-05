@@ -9,8 +9,6 @@ common.http.header.maxlen: 4096
 common.http.body.bufsize: 65536
 common.heartbeat.addr: 224.0.0.100:3300
 
-cache.addr: 127.0.0.1:1100
-cache.heartbeat_ms: 500
 cache.hdd.meta: /tmp/home/hdd/hornet/meta
 cache.hdd.path: /tmp/home/hdd/hornet/
 cache.hdd.cap: 102400
@@ -23,15 +21,3 @@ cache.mem.meta: /tmp/home/dev/shm/hornet/meta
 cache.mem.path: /tmp/home/dev/shm/hornet/
 cache.mem.cap: 102400
 cache.mem.blocksize: 10240
-cache.range_block: 262144
-cache.http.header.discard:
-  - Host
-  - User-Agent
-  - Expect
-  - Content-Length
-  - Hornet-Raw-Key
-  - Hornet-Group
-
-proxy.fault_ms: 2000
-proxy.addr: 127.0.0.1:2200
-proxy.keepalive.count: 10
