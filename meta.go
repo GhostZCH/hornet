@@ -8,9 +8,14 @@ import (
 
 type HKey [KEY_HASH_LEN]byte
 
+type Range struct {
+	BlockSize  uint32 // range block size
+	BlockIndex uint32 // range block index
+}
+
 type Key struct {
 	Hash  HKey
-	Range uint32
+	Range Range
 }
 
 type ItemInfo struct {
@@ -31,6 +36,7 @@ type ItemInfo struct {
 
 type Item struct {
 	Putting bool
+	Ranges  []Range
 	Info    *ItemInfo
 }
 
@@ -60,7 +66,15 @@ func (m *Meta) AddAll(infos []ItemInfo) {
 
 	for _, i := range infos {
 		b := m.getBucket(i.ID)
-		b.items[i.ID] = &Item{false, &i}
+		b.items[i.ID] = &Item{false, nil, &i}
+	}
+
+	for _, i := range infos {
+		if i.ID.Range.BlockSize != 0 {
+			k := Key{i.ID.Hash, Range{}}
+			b := m.getBucket(k)
+			b.items[k].Ranges = append(b.items[k].Ranges, i.ID.Range)
+		}
 	}
 }
 
