@@ -36,13 +36,13 @@ type ItemInfo struct {
 
 type Item struct {
 	Putting bool
-	Ranges  []Range
 	Info    *ItemInfo
 }
 
 type bucket struct {
-	items map[Key]*Item
-	lock  sync.RWMutex
+	items  map[Key]*Item
+	ranges map[HKey][]Range
+	lock   sync.RWMutex
 }
 
 type Meta struct {
@@ -53,6 +53,7 @@ func NewMeta() *Meta {
 	m := new(Meta)
 	for i := 0; i < BUCKET_LIMIT; i++ {
 		m.buckets[i].items = make(map[Key]*Item)
+		m.buckets[i].ranges = make(map[HKey][]Range)
 	}
 	return m
 }
@@ -66,14 +67,13 @@ func (m *Meta) AddAll(infos []ItemInfo) {
 
 	for _, i := range infos {
 		b := m.getBucket(i.ID)
-		b.items[i.ID] = &Item{false, nil, &i}
-	}
+		b.items[i.ID] = &Item{false, &i}
 
-	for _, i := range infos {
 		if i.ID.Range.BlockSize != 0 {
-			k := Key{i.ID.Hash, Range{}}
-			b := m.getBucket(k)
-			b.items[k].Ranges = append(b.items[k].Ranges, i.ID.Range)
+			if _, ok := b.ranges[i.ID.Hash]; !ok {
+				b.ranges[i.ID.Hash] = make([]Range, 1)
+			}
+			b.ranges[i.ID.Hash] = append(b.ranges[i.ID.Hash], i.ID.Range)
 		}
 	}
 }
@@ -105,11 +105,19 @@ func (m *Meta) Get(id Key) *Item {
 }
 
 func (m *Meta) Add(item *Item) {
-	b := m.getBucket(item.Info.ID)
+	id := item.Info.ID
+	b := m.getBucket(id)
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	b.items[item.Info.ID] = item
+	b.items[id] = item
+
+	if id.Range.BlockSize != 0 {
+		if _, ok := b.ranges[id.Hash]; !ok {
+			b.ranges[id.Hash] = make([]Range, 1)
+		}
+		b.ranges[id.Hash] = append(b.ranges[id.Hash], id.Range)
+	}
 }
 
 func (m *Meta) Delete(id Key) {
@@ -117,6 +125,14 @@ func (m *Meta) Delete(id Key) {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 	delete(b.items, id)
+
+	if id.Range.BlockSize == 0 {
+		if r, ok := b.ranges[id.Hash]; ok {
+			for _, rg := range r {
+				delete(b.items, Key{id.Hash, rg})
+			}
+		}
+	}
 }
 
 func (m *Meta) DeleteBatch(match func(*Item) bool) {
