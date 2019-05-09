@@ -49,7 +49,7 @@ hornet有两种启动模式，cache和proxy。
 + 默认使用keepalive
 + 处理过程中出现错误直接断开连接并将错误原因写入日志，并不返回客户端
 
-//TODO: 举例子，说明tag, mask的用法
+//TODO: 举例子
 
 ### Method:Get
 
@@ -92,6 +92,8 @@ hornet有两种启动模式，cache和proxy。
 ### 配置文件
 
 通过启动参数conf配置一个yaml文件作为路径，同时会读取一个通路径下｀local_｀开头文件作为本地配置覆盖主配置，方便大规模部署时添加少了本地配置。例如：conf路径为｀/path/to/conf/hornet.yaml｀, 则会读取一个｀/path/to/conf/local_hornet.yaml｀作为本地配置。
+
+// TODO详细介绍
 
     # 通用配置
     common.log.path: /tmp/message
@@ -136,6 +138,10 @@ hornet有两种启动模式，cache和proxy。
     proxy.addr: 127.0.0.1:2200
     proxy.keepalive.count: 10
 
+## 优化建议
+
++ 减少请求头
+
 ## 设计
 
 //TODO
@@ -167,6 +173,10 @@ hornet有两种启动模式，cache和proxy。
 ## Questions & Answers
 
 // TODO 另外建一个页面
+
+### 回源功能
+
+只有向一个固定的地址转发get请求的回源功能。回源功能十分复杂，需要考虑上游地址，协议，握手，证书，负载均衡等诸多问题，实现需要增加大量代码，但是这并不是缓存的主要功能，所以仅仅支持向特定地址转发的功能，由另一个服务(如nginx)完成回源功能。
 
 ### 关于tag
 

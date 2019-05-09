@@ -8,25 +8,30 @@ import (
 
 type HKey [KEY_HASH_LEN]byte
 
+type Range struct {
+	BlockSize  uint32 // range block size
+	BlockIndex uint32 // range block index
+}
+
 type Key struct {
 	Hash  HKey
-	Range [2]uint32
+	Range Range
 }
 
 type ItemInfo struct {
 	ID         Key
-	Grp        HKey
 	Block      int64
 	Off        int64
 	Expire     int64
-	EtagHash   uint32
-	ExpireHash uint32
-	BitMap     uint64
 	BodyLen    int64
 	HeadLen    int64
+	EtagHash   uint32
+	ExpireHash uint32
+	Grp        HKey
+	BitMap     uint32
+	Tag        uint32
 	RawKeyLen  uint32
 	RawKey     [RAW_KEY_LIMIT]byte
-	Tags       [TAG_LIMIT]uint16
 }
 
 type Item struct {
@@ -35,8 +40,9 @@ type Item struct {
 }
 
 type bucket struct {
-	items map[Key]*Item
-	lock  sync.RWMutex
+	items  map[Key]*Item
+	ranges map[HKey][]Range
+	lock   sync.RWMutex
 }
 
 type Meta struct {
@@ -47,6 +53,7 @@ func NewMeta() *Meta {
 	m := new(Meta)
 	for i := 0; i < BUCKET_LIMIT; i++ {
 		m.buckets[i].items = make(map[Key]*Item)
+		m.buckets[i].ranges = make(map[HKey][]Range)
 	}
 	return m
 }
@@ -61,6 +68,13 @@ func (m *Meta) AddAll(infos []ItemInfo) {
 	for _, i := range infos {
 		b := m.getBucket(i.ID)
 		b.items[i.ID] = &Item{false, &i}
+
+		if i.ID.Range.BlockSize != 0 {
+			if _, ok := b.ranges[i.ID.Hash]; !ok {
+				b.ranges[i.ID.Hash] = make([]Range, 1)
+			}
+			b.ranges[i.ID.Hash] = append(b.ranges[i.ID.Hash], i.ID.Range)
+		}
 	}
 }
 
@@ -91,11 +105,19 @@ func (m *Meta) Get(id Key) *Item {
 }
 
 func (m *Meta) Add(item *Item) {
-	b := m.getBucket(item.Info.ID)
+	id := item.Info.ID
+	b := m.getBucket(id)
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	b.items[item.Info.ID] = item
+	b.items[id] = item
+
+	if id.Range.BlockSize != 0 {
+		if _, ok := b.ranges[id.Hash]; !ok {
+			b.ranges[id.Hash] = make([]Range, 1)
+		}
+		b.ranges[id.Hash] = append(b.ranges[id.Hash], id.Range)
+	}
 }
 
 func (m *Meta) Delete(id Key) {
@@ -103,6 +125,14 @@ func (m *Meta) Delete(id Key) {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 	delete(b.items, id)
+
+	if id.Range.BlockSize == 0 {
+		if r, ok := b.ranges[id.Hash]; ok {
+			for _, rg := range r {
+				delete(b.items, Key{id.Hash, rg})
+			}
+		}
+	}
 }
 
 func (m *Meta) DeleteBatch(match func(*Item) bool) {
