@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -9,13 +8,6 @@ import (
 	"syscall"
 	"time"
 )
-
-type sHeader struct {
-	Magic   int64
-	Version int64
-	Blocks  int64
-	Items   int64
-}
 
 type Store struct {
 	cap      int
@@ -25,7 +17,7 @@ type Store struct {
 	curBlock int64
 	name     string
 	path     string
-	mpath    string
+	metaPath string
 	meta     *Meta
 	lock     sync.RWMutex
 	blocks   map[int64][]byte
@@ -35,8 +27,37 @@ func NewStore(name, mpath, path string, cap, bSize int) *Store {
 	s := &Store{name: name, mpath: mpath, path: path,
 		cap: cap, bSize: bSize, curOff: bSize,
 		blocks: make(map[int64][]byte), meta: NewMeta()}
-	s.load()
+
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	f, err := os.Open(s.mpath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			panic(err)
+		}
+		Lwarn(s.name, " no meta file found")
+		return
+	}
+
+	defer f.Close()
+	defer os.Remove(s.metaPath)
+
+	s.meta.Load(f)
+
 	return s
+}
+
+func (s *Store) Close() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	tmp := s.metaPath + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_RDWR|os.O_CREATE, 0600)
+	Success(err)
+	s.meta.Dump(f)
+	Success(f.Close())
+	Success(os.Rename(tmp, s.metaPath))
 }
 
 func (s *Store) Add(item *Item) []byte {
@@ -78,34 +99,6 @@ func (s *Store) DeleteBatch(match func(*Item) bool) {
 	s.DeleteBatch(match)
 }
 
-func (s *Store) Close() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	le := binary.LittleEndian
-	h := sHeader{Magic: MAGIC, Version: META_VERSION}
-	h.Blocks = int64(len(s.blocks))
-
-	blocks := new(bytes.Buffer)
-	for id, _ := range s.blocks {
-		Success(binary.Write(blocks, le, id))
-	}
-
-	items := new(bytes.Buffer)
-	h.Items = int64(s.meta.DumpAll(items))
-
-	tmp := s.mpath + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_RDWR|os.O_CREATE, 0600)
-	Success(err)
-	defer f.Close()
-
-	Success(binary.Write(f, le, h))
-	Success(f.Write(blocks.Bytes()))
-	Success(f.Write(items.Bytes()))
-
-	Success(os.Rename(tmp, s.mpath))
-}
-
 func (s *Store) minBlock() (min int64, data []byte) {
 	min = -1
 	for i, d := range s.blocks {
@@ -142,58 +135,6 @@ func (s *Store) clear(timeout int) {
 			Success(syscall.Munmap(data))
 		}()
 	}
-}
-
-func (s *Store) loadBlock(f *os.File, n int) {
-	blocks := make([]int64, n)
-	binary.Read(f, binary.LittleEndian, blocks)
-
-	for _, b := range blocks {
-		name := s.getFileName(b)
-		if st, err := os.Stat(name); err != nil {
-			Lerror(err)
-		} else {
-			s.blocks[b] = mmap(name, int(st.Size()))
-			s.size += int(st.Size())
-		}
-		s.curBlock = b
-	}
-
-	s.clear(0)
-}
-
-func (s *Store) loadItem(f *os.File, n int) {
-	infos := make([]ItemInfo, n)
-	Success(binary.Read(f, binary.LittleEndian, infos))
-	s.meta.AddAll(infos)
-}
-
-func (s *Store) load() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	f, err := os.Open(s.mpath)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			panic(err)
-		}
-		Lwarn(s.name, " no meta file found")
-		return
-	}
-
-	defer f.Close()
-	defer os.Remove(s.mpath)
-
-	var h sHeader
-	Success(binary.Read(f, binary.LittleEndian, &h))
-
-	if h.Magic != MAGIC || h.Version != META_VERSION {
-		Lwarn(s.name, " META_VERSION or MAGIC not fix")
-		return
-	}
-
-	s.loadBlock(f, int(h.Blocks))
-	s.loadItem(f, int(h.Items))
 }
 
 func (s *Store) addBlock(size int) {
