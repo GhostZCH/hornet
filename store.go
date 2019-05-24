@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"fmt"
 	"os"
 	"sync"
@@ -23,21 +22,21 @@ type Store struct {
 	blocks   map[int64][]byte
 }
 
-func NewStore(name, mpath, path string, cap, bSize int) *Store {
-	s := &Store{name: name, mpath: mpath, path: path,
+func NewStore(name, metaPath, path string, cap, bSize int) *Store {
+	s := &Store{name: name, metaPath: metaPath, path: path,
 		cap: cap, bSize: bSize, curOff: bSize,
 		blocks: make(map[int64][]byte), meta: NewMeta()}
 
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	f, err := os.Open(s.mpath)
+	f, err := os.Open(s.metaPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			panic(err)
 		}
 		Lwarn(s.name, " no meta file found")
-		return
+		return s
 	}
 
 	defer f.Close()
@@ -63,15 +62,15 @@ func (s *Store) Close() {
 func (s *Store) Add(item *Item) []byte {
 	s.meta.Add(item)
 
-	size := int(item.Info.HeadLen + item.Info.BodyLen)
+	size := int(item.HeadLen + item.BodyLen)
 	if size > s.bSize {
 		s.addBlock(size) // single block for big data
 	} else if size+s.curOff > s.bSize {
 		s.addBlock(s.bSize)
 	}
 
-	item.Info.Block = s.curBlock
-	item.Info.Off = int64(s.curOff)
+	item.Block = s.curBlock
+	item.Off = int64(s.curOff)
 
 	data := s.blocks[s.curBlock][s.curOff : s.curOff+size]
 	s.curOff += size
@@ -84,9 +83,8 @@ func (s *Store) Get(id Key) (*Item, []byte, *string) {
 	if item == nil {
 		return nil, nil, nil
 	}
-	info := item.Info
-	size := int(info.Off + info.HeadLen + info.BodyLen)
-	data := s.blocks[info.Block][int(info.Off):size]
+	size := int(item.Off + item.HeadLen + item.BodyLen)
+	data := s.blocks[item.Block][int(item.Off):size]
 
 	return item, data, &s.name
 }
@@ -117,7 +115,7 @@ func (s *Store) clear(timeout int) {
 			"cur-size =", s.size-len(data))
 
 		s.meta.DeleteBatch(func(i *Item) bool {
-			return i.Info.Block == min
+			return i.Block == min
 		})
 
 		s.size -= len(data)

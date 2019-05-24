@@ -24,7 +24,6 @@ cache.mem.path: /dev/shm/hornet/
 cache.mem.cap: 10240000
 cache.mem.blocksize: 1024000
 cache.range.block: 1048576 # 1m
-cache.upstream: off
 cache.upstream.addr: 127.0.0.1
 cache.upstream.keep: 20
 cache.upstream.timeout: 10

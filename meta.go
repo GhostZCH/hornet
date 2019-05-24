@@ -11,7 +11,6 @@ type Key [KEY_HASH_LEN]byte
 type Item struct {
 	ID         Key
 	Grp        Key
-	Putting    bool
 	CacheAll   bool
 	RBSize     uint32 // range block size
 	RBMap      []byte // range index bitmap
@@ -32,7 +31,8 @@ type Bucket struct {
 }
 
 type Meta struct {
-	Buckets [BUCKET_LIMIT]Bucket
+	putingItems Bucket
+	Buckets     [BUCKET_LIMIT]Bucket
 }
 
 func NewMeta() *Meta {
@@ -50,7 +50,6 @@ func (m *Meta) Load(r io.Reader) {
 }
 
 func (m *Meta) Dump(w io.Writer) {
-	// TODO: remove puting and expires
 	e := gob.NewEncoder(w)
 	Success(e.Encode(m))
 }
@@ -59,9 +58,21 @@ func (m *Meta) Get(id Key) *Item {
 	b := m.getBucket(id)
 	b.lock.RLock()
 	defer b.lock.RUnlock()
+	if i, ok := b.Items[id]; ok {
+		return i
+	}
+
+	return nil
+}
+
+func (m *Meta) GetPutting(id Key) *Item {
+	b := m.putingItems
+	b.lock.RLock()
+	defer b.lock.RUnlock()
 	if item, ok := b.Items[id]; ok {
 		return item
 	}
+
 	return nil
 }
 
@@ -83,12 +94,12 @@ func (m *Meta) Delete(id Key) {
 func (m *Meta) DeleteBatch(match func(*Item) bool) {
 	for i := 0; i < BUCKET_LIMIT; i++ {
 		func() {
-			b := &m.buckets[i]
+			b := &m.Buckets[i]
 			b.lock.Lock()
 			defer b.lock.Unlock()
 			for id, item := range b.Items {
 				if match(item) {
-					delete(b.items, id)
+					delete(b.Items, id)
 				}
 			}
 		}()

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"strconv"
 	"time"
 )
 
@@ -83,46 +84,56 @@ func (h *CacheHandler) Handle(trans *Transaction) {
 		trans.ClientMsg = string(h[2])
 	}
 
-	switch string(trans.Req.Method) {
-	case "GET":
+	switch trans.Req.Method[0] {
+	case 'G':
 		h.get(trans)
-	case "DELETE":
+	case 'D':
 		h.del(trans)
-	case "POST":
-		h.post(trans)
 	}
 
 	trans.Rsp.Send(trans.Conn)
 }
 
 func (h *CacheHandler) get(trans *Transaction) {
-	var key Key
-	key.Hash = DecodeKey(trans.Req.Path)
+	var ranges []int
+	var start, end int
 
-	// TODO range /xxxxxxxxxxxxxxxx
-	// 可能要跨越多个块，第一个只保存head, head不存在就算删除，head.range = 0
-
-	item, data, cache := h.store.Get(key)
-	if item == nil {
-		trans.SvrMsg = "miss"
-		if h.upstream == nil {
-			trans.Rsp.Status = 404
-			return
-		}
-		// TODO 里面的代码要和post复用
-		h.pull(trans)
-		item, data, cache = h.store.Get(key)
-		*cache = "miss"
+	id := DecodeKey(trans.Req.Path)
+	if rg, ok := trans.Req.Headers["range"]; ok {
+		start, end = parse_range(rg[2])
 	}
 
+	item, data, cache := h.store.Get(id)
+
+	rb := GConfig["cache.range.block"].(int)
 	if item != nil {
-		trans.SvrMsg = *cache
-		via := fmt.Sprintf("X-Via-Cache: %s %s\r\n", h.name, *cache)
-		trans.Rsp.Status = 200
-		trans.Rsp.Headers = append(trans.Rsp.Headers, []byte(via))
-		trans.Rsp.Headers = append(trans.Rsp.Headers, data[:item.Info.HeadLen])
-		trans.Rsp.Bodys = append(trans.Rsp.Bodys, data[item.Info.HeadLen:])
-		return
+		rb = int(item.RBSize)
+	}
+
+	for _, rg := range ranges {
+		item, data, cache := h.store.Get(id)
+		if item == nil {
+			trans.SvrMsg = "miss"
+			if h.upstream == nil {
+				trans.Rsp.Status = 404
+				return
+			}
+
+			// TODO 里面的代码要和post复用
+			h.pull(trans)
+			item, data, cache = h.store.Get(id)
+			*cache = "miss"
+		}
+
+		if item != nil {
+			trans.SvrMsg = *cache
+			via := fmt.Sprintf("X-Via-Cache: %s %s\r\n", h.name, *cache)
+			trans.Rsp.Status = 200
+			trans.Rsp.Headers = append(trans.Rsp.Headers, []byte(via))
+			trans.Rsp.Headers = append(trans.Rsp.Headers, data[:item.HeadLen])
+			trans.Rsp.Bodys = append(trans.Rsp.Bodys, data[item.HeadLen:])
+			return
+		}
 	}
 }
 
@@ -130,8 +141,7 @@ func (h *CacheHandler) del(trans *Transaction) {
 	trans.Rsp.Status = 200
 
 	if trans.Req.Path != nil {
-		var id Key
-		id.Hash = DecodeKey(trans.Req.Path)
+		id := DecodeKey(trans.Req.Path)
 		h.store.Delete(id)
 		return
 	}
@@ -139,7 +149,7 @@ func (h *CacheHandler) del(trans *Transaction) {
 	if hdr, ok := trans.Req.Headers["hornet-group"]; ok {
 		g := DecodeKey(hdr[2])
 		h.store.DeleteBatch(func(item *Item) bool {
-			return item.Info.Grp == g
+			return item.Grp == g
 		})
 		return
 	}
@@ -147,36 +157,12 @@ func (h *CacheHandler) del(trans *Transaction) {
 	if hdr, ok := trans.Req.Headers["hornet-regex"]; ok {
 		reg := regexp.MustCompile(string(hdr[2]))
 		h.store.DeleteBatch(func(item *Item) bool {
-			return reg.Match(item.Info.RawKey[:item.Info.RawKeyLen])
+			return reg.Match(item.RawKey)
 		})
 		return
 	}
 
 	panic(errors.New("NO_DEL_PARAMS"))
-}
-
-func (h *CacheHandler) post(trans *Transaction) {
-	item, head := GenerateItem(trans.Req.Headers)
-
-	if trans.Req.Path != nil {
-		item.Info.ID.Hash = DecodeKey(trans.Req.Path)
-	}
-
-	data := h.store.Add(item)
-
-	copy(data, head)
-	data = data[len(head):]
-
-	copy(data, trans.Req.Body)
-	data = data[len(trans.Req.Body):]
-
-	if n, e := trans.Conn.Read(data); n != len(data) || e != nil {
-		h.store.Delete(item.Info.ID)
-		panic(e) // n != len(data)
-	}
-
-	item.Putting = false
-	trans.Rsp.Status = 201
 }
 
 func (h *CacheHandler) pull(trans *Transaction) {
@@ -206,7 +192,7 @@ func (h *CacheHandler) pull(trans *Transaction) {
 	item, head := GenerateItem(rsp.Headers)
 	// TODO range
 	if trans.Req.Path != nil {
-		item.Info.ID.Hash = DecodeKey(trans.Req.Path)
+		item.ID = DecodeKey(trans.Req.Path)
 	}
 
 	data := h.store.Add(item)
@@ -218,7 +204,7 @@ func (h *CacheHandler) pull(trans *Transaction) {
 	data = data[len(rsp.Body):]
 
 	if n, e := u.Read(data); n != len(data) || e != nil {
-		h.store.Delete(item.Info.ID)
+		h.store.Delete(item.ID)
 		panic(e) // n != len(data)
 	}
 
@@ -228,4 +214,27 @@ func (h *CacheHandler) pull(trans *Transaction) {
 	if len(h.upstream.free) < h.upstream.keep {
 		h.upstream.free <- u
 	}
+}
+
+func parse_range(r []byte) (start, end int) {
+	start, end = 0, -1
+
+	m := REQ_RANGE_REG.FindSubmatch(r)
+	if len(m) != 3 || (len(m[1]) == 0 && len(m[2]) == 0) {
+		panic(errors.New("RANGE_ERROR"))
+	}
+
+	if len(m[1]) != 0 {
+		start, _ = strconv.Atoi(string(m[1]))
+	}
+
+	if len(m[2]) != 0 {
+		end, _ = strconv.Atoi(string(m[2]))
+	}
+
+	if start >= end {
+		panic(errors.New("RANGE_ERROR"))
+	}
+
+	return start, end
 }
