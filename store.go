@@ -59,9 +59,11 @@ func (s *Store) Close() {
 	Success(os.Rename(tmp, s.metaPath))
 }
 
-func (s *Store) Add(item *Item) []byte {
+func (s *Store) Add(item *Item) {
 	s.meta.Add(item)
+}
 
+func (s *Store) Alloc(item *Item) []byte {
 	size := int(item.HeadLen + item.BodyLen)
 	if size > s.bSize {
 		s.addBlock(size) // single block for big data

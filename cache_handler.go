@@ -6,8 +6,15 @@ import (
 	"net"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 )
+
+type LockKey struct {
+	id      Key
+	rbSize  uint32
+	rbIndex uint32
+}
 
 type Upstream struct {
 	keep int
@@ -20,6 +27,8 @@ type CacheHandler struct {
 	store     *StoreManager
 	heartBeat *net.UDPConn
 	upstream  *Upstream
+	lock      sync.Mutex
+	pullLock  map[LockKey]sync.Mutex
 }
 
 func NewCacheHandler() (h *CacheHandler) {
@@ -119,7 +128,6 @@ func (h *CacheHandler) get(trans *Transaction) {
 				return
 			}
 
-			// TODO 里面的代码要和post复用
 			h.pull(trans)
 			item, data, cache = h.store.Get(id)
 			*cache = "miss"
@@ -208,7 +216,6 @@ func (h *CacheHandler) pull(trans *Transaction) {
 		panic(e) // n != len(data)
 	}
 
-	item.Putting = false
 	trans.Rsp.Status = 201
 
 	if len(h.upstream.free) < h.upstream.keep {
