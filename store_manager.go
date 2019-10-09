@@ -87,5 +87,4 @@ func (sm *StoreManager) DeleteBatch(match func(*Item) bool) {
 	}
 }
 
-//TODO delete by tag
 //TODO delete by mask

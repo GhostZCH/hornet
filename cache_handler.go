@@ -96,6 +96,8 @@ func (h *CacheHandler) Handle(trans *Transaction) {
 	switch trans.Req.Method[0] {
 	case 'G':
 		h.get(trans)
+	case 'P':
+		h.get(trans)
 	case 'D':
 		h.del(trans)
 	}

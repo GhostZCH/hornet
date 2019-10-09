@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/hex"
 	"errors"
 	"io/ioutil"
 	"log"
@@ -181,15 +180,6 @@ func HandleSignal(svr *Server) {
 			InitLog()
 		}
 	}
-}
-
-func DecodeKey(buf []byte) HKey {
-	var key [KEY_HASH_LEN]byte
-	n, e := hex.Decode(key[:], buf)
-	if n != KEY_HASH_LEN || e != nil {
-		panic(errors.New("ID_FORMAR_ERROR"))
-	}
-	return key
 }
 
 func SendHttp(conn *net.TCPConn, per []byte, headers [][]byte, bodys [][]byte) int {

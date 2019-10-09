@@ -15,22 +15,22 @@ type Store struct {
 	curOff   int
 	curBlock int64
 	name     string
-	path     string
-	metaPath string
+	dir      string
 	meta     *Meta
 	lock     sync.RWMutex
 	blocks   map[int64][]byte
 }
 
-func NewStore(name, metaPath, path string, cap, bSize int) *Store {
-	s := &Store{name: name, metaPath: metaPath, path: path,
+func NewStore(name, metaDir, dir string, cap, bSize int) *Store {
+	s := &Store{name: name, dir: dir,
 		cap: cap, bSize: bSize, curOff: bSize,
 		blocks: make(map[int64][]byte), meta: NewMeta()}
 
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	f, err := os.Open(s.metaPath)
+	meta := s.getPath("meta", META_VERSION)
+	f, err := os.Open(meta)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			panic(err)
@@ -40,7 +40,7 @@ func NewStore(name, metaPath, path string, cap, bSize int) *Store {
 	}
 
 	defer f.Close()
-	defer os.Remove(s.metaPath)
+	defer os.Remove(meta)
 
 	s.meta.Load(f)
 
@@ -51,16 +51,17 @@ func (s *Store) Close() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	tmp := s.metaPath + ".tmp"
+	meta := s.getPath("meta", META_VERSION)
+	tmp := meta + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_RDWR|os.O_CREATE, 0600)
 	Success(err)
 	s.meta.Dump(f)
 	Success(f.Close())
-	Success(os.Rename(tmp, s.metaPath))
+	Success(os.Rename(tmp, meta))
 }
 
-func (s *Store) Add(item *Item) {
-	s.meta.Add(item)
+func (s *Store) Add(k Key) {
+	s.meta.Add(k)
 }
 
 func (s *Store) Alloc(item *Item) []byte {
@@ -131,7 +132,7 @@ func (s *Store) clear(timeout int) {
 			s.lock.Lock()
 			defer s.lock.Unlock()
 
-			Success(os.Remove(s.getFileName(min)))
+			Success(os.Remove(s.getPath("dat", min)))
 			Success(syscall.Munmap(data))
 		}()
 	}
@@ -142,7 +143,7 @@ func (s *Store) addBlock(size int) {
 	defer s.lock.Unlock()
 
 	now := time.Now().UnixNano()
-	name := s.getFileName(now)
+	name := s.getPath("dat", now)
 	s.blocks[now] = mmap(name, size)
 
 	s.curBlock = now
@@ -153,8 +154,8 @@ func (s *Store) addBlock(size int) {
 	s.clear(timeout + 1)
 }
 
-func (s *Store) getFileName(block int64) string {
-	return fmt.Sprintf(FILE_NAME_FMT, s.path, block)
+func (s *Store) getPath(ext string, data int64) string {
+	return fmt.Sprintf("%s/%s-%016x.%s", s.dir, s.name, data, ext)
 }
 
 func mmap(path string, size int) []byte {
