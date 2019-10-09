@@ -1,61 +1,35 @@
 package main
 
 import (
-	"fmt"
 	"os"
-	"sync"
-	"syscall"
-	"time"
 )
 
-type Store struct {
-	lock   sync.RWMutex
-	blocks map[int64][]byte
+type Device struct {
+	cap      int
+	size     int
+	bSize    int
+	curOff   int
+	curBlock int64
+	name     string
+	dir      string
+	meta     *Meta
+	store    *Store
 }
 
-func (s *Store) Alloc(size int64) (block int64, off int64, data []byte) {
-	if size > s.bSize {
-		s.addBlock(size) // single block for big data
-	} else if size+s.curOff > s.bSize {
-		s.addBlock(s.bSize)
-	}
+func NewDevice(name, metaDir, dir string, cap, bSize int) *Store {
+	d := &Device{name: name, dir: dir,
+		cap: cap, bSize: bSize, curOff: bSize,
+		blocks: make(map[int64][]byte), meta: NewMeta()}
 
-	block = s.curBlock
-	off = int64(s.curOff)
+	s.lock.Lock()
+	defer s.lock.Unlock()
 
-	data = s.blocks[s.curBlock][s.curOff : s.curOff+size]
-	s.curOff += size
+	defer f.Close()
+	defer os.Remove(meta)
 
-	return block, off, data
-}
+	s.meta.Load(f)
 
-func (s *Store) Get(id Key) (*Item, []byte, *string) {
-	item, putItem := s.meta.Get(id)
-	if item == nil {
-		return nil, nil, nil
-	}
-	size := int(item.Off + item.HeadLen + item.BodyLen)
-	data := s.blocks[item.Block][int(item.Off):size]
-
-	return item, data, &s.name
-}
-
-// func (s *Store) Delete(id Key) {
-// 	s.meta.Delete(id)
-// }
-
-func (s *Store) DeleteBatch(match func(*Item) bool) {
-	s.DeleteBatch(match)
-}
-
-func (s *Store) minBlock() (min int64, data []byte) {
-	min = -1
-	for i, d := range s.blocks {
-		if i < min || min < 0 {
-			min, data = i, d
-		}
-	}
-	return min, data
+	return s
 }
 
 func (s *Store) clear(timeout int) {
@@ -100,10 +74,6 @@ func (s *Store) addBlock(size int) {
 
 	timeout := GConfig["common.sock.req.timeout"].(int)
 	s.clear(timeout + 1)
-}
-
-func (s *Store) getPath(ext string, data int64) string {
-	return fmt.Sprintf("%s/%s-%016x.%s", s.dir, s.name, data, ext)
 }
 
 func mmap(path string, size int) []byte {
