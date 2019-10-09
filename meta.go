@@ -9,25 +9,18 @@ import (
 	"sync"
 )
 
-const ALL_RANGES uint64 = ^uint64(0)
-
 type Hash [md5.Size]byte
 
-func New(data []byte) Hash {
-	return md5.Sum(data)
-}
-
 type Key struct {
-	ID     Hash
-	RangeIndex uint64
+	ID         Hash
+	RangeIndex uint32
 }
 
+// 加一个辅助数据记录range和目录结构
 type Item struct {
-	Key		Key
+	ID        Hash
 	Grp       Hash
-	RangeSize uint32 // range block size
-	Block     int64
-	Off       int64
+	RangeSize uint32 // RangeSize = 0 means cache all
 	Expire    int64
 	BodyLen   int64
 	HeadLen   int64
@@ -40,11 +33,16 @@ type Item struct {
 type Bucket struct {
 	lock    sync.RWMutex
 	Items   map[Hash]*Item
+	Range   map[Hash]uint32
 	putting map[Key]*Item
 }
 
 type Meta struct {
 	Buckets [BUCKET_LIMIT]Bucket
+}
+
+func GetHash(data []byte) Hash {
+	return md5.Sum(data)
 }
 
 func NewMeta() *Meta {
@@ -66,20 +64,20 @@ func (m *Meta) Dump(w io.Writer) {
 }
 
 func (m *Meta) Get(k Key) (item *Item, puttingItem *Item) {
-	b := m.getBucket(k.ID)
-	b.lock.RLock()
-	defer b.lock.RUnlock()
+	// b := m.getBucket(k.ID)
+	// b.lock.RLock()
+	// defer b.lock.RUnlock()
 
-	if i, ok := b.Items[k.ID]; ok && i.Key.Ranges Ranges&k.Ranges != 0) {
-		return i, nil
-	}
+	// if i, ok := b.Items[k.ID]; ok && i.Key.Ranges Ranges&k.Ranges != 0) {
+	//     return i, nil
+	// }
 
-	if ｐ, ok := b.putting[k]; ok {
-		return nil, nil
-	}
+	// if ｐ, ok := b.putting[k]; ok {
+	//     return nil, nil
+	// }
 
-	b.putting[k] = new(Item)
-	return nil, b.putting[k]
+	// b.putting[k] = new(Item)
+	// return nil, b.putting[k]
 }
 
 func (m *Meta) Add(k Key) {
@@ -125,4 +123,5 @@ func (m *Meta) DeleteBatch(match func(*Item) bool) {
 func (m *Meta) getBucket(id Hash) *Bucket {
 	k := binary.BigEndian.Uint32(id[:4]) % uint32(BUCKET_LIMIT)
 	return &m.Buckets[k]
+
 }
