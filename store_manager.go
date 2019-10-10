@@ -6,51 +6,45 @@ const (
 	IDX_HDD
 )
 
-type StoreManager struct {
-	stores [3]*Store
+type DeviceManager struct {
+	devices [3]*Device
 }
 
-func NewStoreManager() (sm *StoreManager) {
-	sm = new(StoreManager)
+func NewDeviceManager() (sm *StoreManager) {
+	dm = new(DeviceManager)
 
-	sm.stores[IDX_MEM] = NewStore(
+	dm.devices[IDX_MEM] = NewStore(
 		"mem",
-		GConfig["cache.mem.meta"].(string),
-		GConfig["cache.mem.path"].(string),
+		GConfig["cache.mem.dir"].(string),
 		GConfig["cache.mem.cap"].(int),
-		GConfig["cache.mem.blocksize"].(int),
 	)
 
-	sm.stores[IDX_SSD] = NewStore(
+	dm.devices[IDX_SSD] = NewStore(
 		"ssd",
-		GConfig["cache.ssd.meta"].(string),
-		GConfig["cache.ssd.path"].(string),
+		GConfig["cache.ssd.dir"].(string),
 		GConfig["cache.ssd.cap"].(int),
-		GConfig["cache.ssd.blocksize"].(int),
 	)
 
-	sm.stores[IDX_HDD] = NewStore(
+	dm.devices[IDX_HDD] = NewStore(
 		"hdd",
-		GConfig["cache.hdd.meta"].(string),
-		GConfig["cache.hdd.path"].(string),
+		GConfig["cache.hdd.dir"].(string),
 		GConfig["cache.hdd.cap"].(int),
-		GConfig["cache.hdd.blocksize"].(int),
 	)
 
-	return sm
+	return dm
 }
 
-func (sm *StoreManager) Close() {
-	for _, s := range sm.stores {
-		if s != nil {
-			s.Close()
+func (dm *DeviceManager) Close() {
+	for _, d := range dm.stores {
+		if d != nil {
+			d.Close()
 		}
 	}
 }
 
-func (sm *StoreManager) Add(item *Item) []byte {
+func (dm *DeviceManager) Add(k Key) []byte {
 	for i := IDX_HDD; i > 0; i-- {
-		if sm.stores[i] != nil {
+		if dm.stores[i] != nil {
 			return sm.stores[i].Add(item)
 		}
 	}
@@ -75,13 +69,7 @@ func (sm *StoreManager) Get(id Key) (*Item, []byte, *string) {
 	return nil, nil, nil
 }
 
-func (sm *StoreManager) Delete(id Key) {
-	for _, s := range sm.stores {
-		s.Delete(id)
-	}
-}
-
-func (sm *StoreManager) DeleteBatch(match func(*Item) bool) {
+func (sm *DeviceManager) DeleteBatch(match func(*Item) bool) {
 	for _, s := range sm.stores {
 		s.DeleteBatch(match)
 	}

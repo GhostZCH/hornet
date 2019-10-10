@@ -60,21 +60,33 @@ func (m *Meta) Dump(w io.Writer) {
 	Success(gob.NewEncoder(w).Encode(m))
 }
 
-func (m *Meta) Get(k Key) (item *Item, puttingItem *Item) {
+func (m *Meta) Get(k Key) (item *Item) {
 	b := m.getBucket(k.ID)
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
 	if i, ok := b.Items[k]; ok {
-		return i, nil
+		return i
 	}
 
-	if ｐ, ok := b.putting[k]; ok {
-		return nil, nil
+	return nil
+}
+
+func (m *Meta) Alloc(k Key) (item *Item) {
+	b := m.getBucket(k.ID)
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	if i, ok := b.Items[k]; ok {
+		return nil
+	}
+
+	if i, ok := b.putting[k]; ok {
+		return nil
 	}
 
 	b.putting[k] = new(Item)
-	return nil, b.putting[k]
+	return b.putting[k]
 }
 
 func (m *Meta) Add(k Key) {
@@ -86,19 +98,11 @@ func (m *Meta) Add(k Key) {
 		panic(errors.New("NO_PUTTING_ITEMS"))
 	}
 
-	defer delete(b.putting, k)
-
 	if _, ok := b.Items[k]; !ok {
 		b.Items[k] = b.putting[k]
 	}
+	delete(b.putting, k)
 }
-
-// func (m *Meta) Delete(id Hash) {
-// 	b := m.getBucket(id)
-// 	b.lock.RLock()
-// 	defer b.lock.RUnlock()
-// 	delete(b.Items, id)
-// }
 
 func (m *Meta) DeleteBatch(match func(*Item) bool) {
 	for i := 0; i < BUCKET_LIMIT; i++ {
