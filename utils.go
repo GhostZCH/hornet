@@ -142,20 +142,6 @@ func LoadConf(path string, localPath string) {
 	}
 }
 
-func OpenMmap(path string, size int) []byte {
-	f, fe := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
-	Success(fe)
-	defer f.Close()
-
-	f.Truncate(int64(size))
-
-	flag := syscall.PROT_READ | syscall.PROT_WRITE
-	data, me := syscall.Mmap(int(f.Fd()), 0, size, flag, syscall.MAP_SHARED)
-	Success(me)
-
-	return data
-}
-
 func SetTimeOut(conn *net.TCPConn, seconds int) {
 	timeout := time.Duration(seconds) * time.Second
 	deadline := time.Now().Add(timeout)

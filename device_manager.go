@@ -1,5 +1,7 @@
 package main
 
+const RANGE_SIZE int = 4 * 1024 * 1024
+
 const (
 	IDX_MEM = iota
 	IDX_SSD

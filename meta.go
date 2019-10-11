@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"errors"
-	"io"
+	"os"
 	"sync"
 )
 
@@ -39,25 +39,50 @@ type Bucket struct {
 }
 
 type Meta struct {
+	path    string
 	Buckets [BUCKET_LIMIT]Bucket
+	Blocks  []int64
 }
 
-func NewMeta() *Meta {
-	m := new(Meta)
+func NewMeta(dir string) *Meta {
+	m := &Meta{path: dir + "/meta"}
 	for i := 0; i < BUCKET_LIMIT; i++ {
 		m.Buckets[i].Items = make(map[Key]*Item)
 		m.Buckets[i].putting = make(map[Key]*Item)
 	}
+
+	f, err := os.Open(s.mpath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			panic(err)
+		}
+		Lwarn(s.name, " no meta file found")
+		return
+	}
+
+	defer f.Close()
+	defer os.Remove(s.mpath)
+
+	Success(gob.NewDecoder(r).Decode(m))
+
 	return m
 }
 
-func (m *Meta) Load(r io.Reader) {
-	// TODO: use other serialize method when gob not fast enough
-	Success(gob.NewDecoder(r).Decode(m))
+func (m *Meta) GetBlocks() (blocks []int64) {
+	return m.Blocks
 }
 
-func (m *Meta) Dump(w io.Writer) {
+func (m *Meta) Dump(blocks []int64) {
+	m.Blocks = blocks
+
+	tmp := m.path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_RDWR|os.O_CREATE, 0600)
+	Success(err)
+
 	Success(gob.NewEncoder(w).Encode(m))
+	f.Close()
+
+	Success(os.Rename(tmp, m.path))
 }
 
 func (m *Meta) Get(k Key) (item *Item) {
@@ -104,7 +129,8 @@ func (m *Meta) Add(k Key) {
 	delete(b.putting, k)
 }
 
-func (m *Meta) DeleteBatch(match func(*Item) bool) {
+func (m *Meta) DeleteBatch(match func(*Item) bool) uint {
+	n := uint(0)
 	for i := 0; i < BUCKET_LIMIT; i++ {
 		func() {
 			b := &m.Buckets[i]
@@ -113,10 +139,12 @@ func (m *Meta) DeleteBatch(match func(*Item) bool) {
 			for id, item := range b.Items {
 				if match(item) {
 					delete(b.Items, id)
+					n++
 				}
 			}
 		}()
 	}
+	return n
 }
 
 func (m *Meta) getBucket(id Hash) *Bucket {

@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const BLOCK_COUNT int = 128
+
 type Store struct {
 	dir      string
 	cap      int
@@ -19,8 +21,35 @@ type Store struct {
 	blocks   map[int64][]byte
 }
 
-func NewStore() {
-	// todo
+func NewStore(dir string, cap int, blocks []int64) {
+	s := &Store{
+		dir:      dir,
+		cap:      cap,
+		size:     0,
+		bSize:    cap / BLOCK_COUNT,
+		curOff:   cap / BLOCK_COUNT,
+		curBlock: 0,
+		blocks:   make(map[int64][]byte)}
+
+	for b := range blocks {
+		path := getPath(dir, b)
+		if info, err := os.Stat(path); err != nil {
+			Lwarn(fmt.Sprintf("stat %s error [%v]", path, err))
+		} else {
+			if data, err := mmap(path, info.Size); err != nil {
+				Lwarn(fmt.Sprintf("mmap %s error [%v]", path, err))
+			} else {
+				s.blocks[b] = data
+			}
+		}
+	}
+}
+
+func (s *Store) GetBlocks() (blocks []int64) {
+	for b, _ := range s.blocks {
+		blocks = append(blocks, b)
+	}
+	return blocks
 }
 
 func (s *Store) Get(block, off, len int64) []byte {
@@ -51,29 +80,29 @@ func (s *Store) Alloc(size int64) (block int64, off int64, data []byte) {
 }
 
 func (s *Store) minBlock() (min int64, data []byte) {
-	min = -1
+	min = 0
 	for i, d := range s.blocks {
-		if i < min || min < 0 {
+		if i < min || min == 0 {
 			min, data = i, d
 		}
 	}
 	return min, data
 }
 
-func (s *Store) Clear() {
-	if len(s.blocks) >= 0 && s.size > s.cap {
-		s.lock.Lock()
-		defer s.lock.Unlock()
+func (s *Store) Clear() []int64 {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 
+	for len(s.blocks) >= 0 && s.size > s.cap {
 		min, data := s.minBlock()
+		path := s.getPath(min)
+
+		Lwarn(fmt.Sprintf("Store.Clear: rm %s release %d]"), path, len(data))
 
 		s.size -= len(data)
 		delete(s.blocks, min)
 
-		s.lock.Lock()
-		defer s.lock.Unlock()
-
-		Success(os.Remove(s.getPath("dat", min)))
+		Success(os.Remove(path))
 		Success(syscall.Munmap(data))
 	}
 }
@@ -83,7 +112,7 @@ func (s *Store) addBlock(size int) {
 	defer s.lock.Unlock()
 
 	now := time.Now().UnixNano()
-	name := s.getPath("dat", now)
+	name := s.getPath(now)
 	s.blocks[now] = mmap(name, size)
 
 	s.curBlock = now
@@ -94,20 +123,23 @@ func (s *Store) addBlock(size int) {
 	s.clear(timeout + 1)
 }
 
-func (s *Store) getPath(ext string, bid int64) string {
-	return fmt.Sprintf("%s/%016x.dat", s.dir, bid)
+func getPath(dir string, bid int64) string {
+	return fmt.Sprintf("%s/%016x.dat", dir, bid)
 }
 
-func mmap(path string, size int) []byte {
-	f, ferr := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
-	Success(ferr)
+func mmap(path string, size int) (data []byte, err error) {
+	var f *os.File
+	f, err = os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return nil, err
+	}
 	defer f.Close()
 
-	f.Truncate(int64(size))
+	err = f.Truncate(int64(size))
+	if err != nil {
+		return nil, err
+	}
 
 	flag := syscall.PROT_READ | syscall.PROT_WRITE
-	d, merr := syscall.Mmap(int(f.Fd()), 0, size, flag, syscall.MAP_SHARED)
-	Success(merr)
-
-	return d
+	return syscall.Mmap(int(f.Fd()), 0, size, flag, syscall.MAP_SHARED)
 }
