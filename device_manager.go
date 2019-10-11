@@ -1,61 +1,61 @@
 package main
 
-const RANGE_SIZE int = 4 * 1024 * 1024
-
-const (
-	IDX_MEM = iota
-	IDX_SSD
-	IDX_HDD
+import (
+	"errors"
+	"hash/crc64"
 )
 
+const RANGE_SIZE uint32 = uint32(4 * 1024 * 1024)
+
+var DEVICES [3]string = [3]string{"mem", "ssd", "hdd"}
+
 type DeviceManager struct {
-	devices [3]*Device
+	devices [len(DEVICES)]*Device
 }
 
-func NewDeviceManager() (sm *StoreManager) {
-	dm = new(DeviceManager)
+func NewDeviceManager() *DeviceManager {
+	dm := new(DeviceManager)
 
-	dm.devices[IDX_MEM] = NewStore(
-		"mem",
-		GConfig["cache.mem.dir"].(string),
-		GConfig["cache.mem.cap"].(int),
-	)
+	err := errors.New("no devices")
+	for i, name := range DEVICES {
+		dir := GConfig["cache."+name+".dir"].(string)
+		cap := GConfig["cache."+name+".cap"].(int)
+		if dm.devices[i] = NewDevice(dir, cap); dm.devices[i] != nil {
+			err = nil
+		}
+	}
 
-	dm.devices[IDX_SSD] = NewStore(
-		"ssd",
-		GConfig["cache.ssd.dir"].(string),
-		GConfig["cache.ssd.cap"].(int),
-	)
-
-	dm.devices[IDX_HDD] = NewStore(
-		"hdd",
-		GConfig["cache.hdd.dir"].(string),
-		GConfig["cache.hdd.cap"].(int),
-	)
+	Success(err)
 
 	return dm
 }
 
 func (dm *DeviceManager) Close() {
-	for _, d := range dm.stores {
+	for _, d := range dm.devices {
 		if d != nil {
 			d.Close()
 		}
 	}
 }
 
-func (dm *DeviceManager) Add(k Key) []byte {
-	for i := IDX_HDD; i > 0; i-- {
-		if dm.stores[i] != nil {
-			return sm.stores[i].Add(item)
+func (dm *DeviceManager) Alloc(k Key, head, body int64) (*Item, []byte, int) {
+	for i := len(DEVICES) - 1; i > 0; i-- {
+		if dm.devices[i] != nil {
+			return dm.devices[i].Alloc(k, head, body)
 		}
 	}
-	return nil
+	panic(errors.New("NO_DEVICE_FOR_ALLOC"))
 }
 
-func (sm *StoreManager) Get(id Key) (*Item, []byte, *string) {
-	for i, s := range sm.stores {
-		if item, data, name := s.Get(id); item != nil {
+func (dm *DeviceManager) Add(dev int, k Key) {
+	dm.devices[dev].Add(k)
+}
+
+func (dm *DeviceManager) Get(id Hash, start, end int64) (*Item, [][]byte, *string) {
+	for i, d := range dm.devices {
+		// TODO range
+		// bytes 0- 怎么处理？
+		if item, data := d.Get(k); item != nil {
 			for j := i - 1; j >= 0; j-- {
 				if sm.stores[j] != nil {
 					new := *item
@@ -65,15 +65,40 @@ func (sm *StoreManager) Get(id Key) (*Item, []byte, *string) {
 				}
 			}
 
-			return item, data, name
+			return item, data, &DEVICES[i]
 		}
 	}
 	return nil, nil, nil
 }
 
-func (sm *DeviceManager) DeleteBatch(match func(*Item) bool) {
-	for _, s := range sm.stores {
+func (dm *DeviceManager) Delete(match func(*Item) bool) {
+	for _, d := range dm.devices {
 		s.DeleteBatch(match)
+	}
+}
+
+func (dm *DeviceManager) DeleteByID(id Hash) {
+	for _, s := range dm.devices {
+		s.DeleteBatch(func(item *Item) {
+			return item.Key.ID == id
+		})
+	}
+}
+
+func (dm *DeviceManager) DeleteByID(id Hash) {
+	for _, s := range dm.devices {
+		s.DeleteBatch(func(item *Item) {
+			return item.Key.ID == id
+		})
+	}
+}
+
+func (dm *DeviceManager) DeleteByGroup(group []byte) {
+	g := crc64.Checksum(group, nil)
+	for _, s := range dm.devices {
+		s.DeleteBatch(func(item *Item) {
+			return item.GroupCRC == g
+		})
 	}
 }
 

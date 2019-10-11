@@ -1,15 +1,19 @@
 package main
 
 type Device struct {
-	name  string
 	meta  *Meta
 	store *Store
 }
 
-func NewDevice(name, dir string, cap int) *Store {
+func NewDevice(dir string, cap int) *Device {
+	if cap == 0 || dir == "" {
+		return nil
+	}
+
 	m := NewMeta(dir)
-	s := NewStore(dir, cap, m.getBucket())
-	return &Device{name: name, store: s, meta: m}
+	s := NewStore(dir, cap, m.GetBlocks())
+	d := &Device{store: s, meta: m}
+	d.clear()
 }
 
 func (d *Device) Close() {
@@ -18,21 +22,46 @@ func (d *Device) Close() {
 }
 
 func (d *Device) Get(k Key) (*Item, []byte) {
+	if i := d.meta.Get(k); item != nil {
+		if d := d.store.Get(i.Block, i.Off, i.BodyLen+i.HeadLen); d != nil {
+			return i, d
+		}
+	}
 	return nil, nil
+}
+
+func (d *Device) clear() {
+	for b := range d.store.Clear() {
+		d.DeleteBatch(func(item *Item) { return item.Block == b })
+	}
+
+	// delete items in unloaded blocks if any
+	// should not run those code in normal conditions
+	for b := range m.GetBlocks() {
+		found := false
+		for i := range s.GetBlocks() {
+			if i == b {
+				found = true
+				break
+			}
+		}
+		if !found {
+			Lwarn("delete items in unload block ", b)
+			m.DeleteBatch(func(item *Item) { return item.Block == b })
+		}
+	}
 }
 
 func (d *Device) Alloc(k Key, head int64, body int64) (item *Item, data []byte) {
 	item = d.meta.Alloc(k)
+	if item == nil {
+		return nil, nil
+	}
+
 	item.HeadLen = header
 	item.BodyLen = body
 	item.Block, item.Off, data = d.store.Alloc(header + body)
-	delBlocks := d.store.Clear()
-
-	for b := range delBlocks {
-		d.DeleteBatch(func(item *Item) {
-			return item.Block == b
-		})
-	}
+	d.clear()
 
 	return item, data
 }

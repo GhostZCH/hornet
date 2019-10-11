@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 )
@@ -12,22 +13,21 @@ import (
 type Hash [md5.Size]byte
 
 type Key struct {
-	ID    Hash
-	Range uint32 // index of range block
+	ID         Hash
+	RangeIndex uint16 // index of range block
 }
 
 type Item struct {
-	Key       Key
-	Group     Hash
-	Block     int64
-	Off       int64
-	RangeSize uint32 // RangeSize = 0 means cache all
-	Expire    int64
-	BodyLen   int64
-	HeadLen   int64
-	EtagCRC   uint32
-	Tag       int64
-	RawKey    []byte
+	Key      Key
+	GroupCRC uint64 //crc64
+	Block    int64
+	Off      int64
+	Expire   int64
+	BodyLen  int64
+	HeadLen  int64
+	EtagCRC  uint32
+	Tag      int64
+	RawKey   []byte
 }
 
 type Bucket struct {
@@ -45,7 +45,7 @@ type Meta struct {
 }
 
 func NewMeta(dir string) *Meta {
-	m := &Meta{path: dir + "/meta"}
+	m := &Meta{path: fmt.Sprintf("%s/%d-%d.meta", dir, META_VERSION, RANGE_SIZE)}
 	for i := 0; i < BUCKET_LIMIT; i++ {
 		m.Buckets[i].Items = make(map[Key]*Item)
 		m.Buckets[i].putting = make(map[Key]*Item)

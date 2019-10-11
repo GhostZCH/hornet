@@ -21,7 +21,7 @@ type Store struct {
 	blocks   map[int64][]byte
 }
 
-func NewStore(dir string, cap int, blocks []int64) {
+func NewStore(dir string, cap int, blocks []int64) *Store {
 	s := &Store{
 		dir:      dir,
 		cap:      cap,
@@ -43,6 +43,8 @@ func NewStore(dir string, cap int, blocks []int64) {
 			}
 		}
 	}
+
+	return s
 }
 
 func (s *Store) GetBlocks() (blocks []int64) {
