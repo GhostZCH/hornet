@@ -12,16 +12,16 @@ const BLOCK_COUNT int = 128
 
 type Store struct {
 	dir      string
-	cap      int
-	size     int
-	bSize    int
-	curOff   int
+	cap      int64
+	size     int64
+	bSize    int64
+	curOff   int64
 	curBlock int64
 	lock     sync.RWMutex
 	blocks   map[int64][]byte
 }
 
-func NewStore(dir string, cap int, blocks []int64) *Store {
+func NewStore(dir string, cap int64, blocks []uint32) *Store {
 	s := &Store{
 		dir:      dir,
 		cap:      cap,
@@ -29,7 +29,7 @@ func NewStore(dir string, cap int, blocks []int64) *Store {
 		bSize:    cap / BLOCK_COUNT,
 		curOff:   cap / BLOCK_COUNT,
 		curBlock: 0,
-		blocks:   make(map[int64][]byte)}
+		blocks:   make(map[uint32][]byte)}
 
 	for b := range blocks {
 		path := getPath(dir, b)
@@ -65,7 +65,7 @@ func (s *Store) Get(block, off, len int64) []byte {
 	return nil
 }
 
-func (s *Store) Alloc(size int64) (block int64, off int64, data []byte) {
+func (s *Store) Alloc(size uint32) (block uint32, off int64, data []byte) {
 	if size > s.bSize {
 		s.addBlock(size) // single block for big data
 	} else if size+s.curOff > s.bSize {
@@ -125,8 +125,8 @@ func (s *Store) addBlock(size int) {
 	s.clear(timeout + 1)
 }
 
-func getPath(dir string, bid int64) string {
-	return fmt.Sprintf("%s/%016x.dat", dir, bid)
+func getPath(dir string, block int64) string {
+	return fmt.Sprintf("%s/%016x.dat", dir, block)
 }
 
 func mmap(path string, size int) (data []byte, err error) {

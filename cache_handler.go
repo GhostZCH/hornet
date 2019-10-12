@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"net"
@@ -24,7 +25,7 @@ type Upstream struct {
 
 type CacheHandler struct {
 	name      string
-	store     *StoreManager
+	devices   *DeviceManager
 	heartBeat *net.UDPConn
 	upstream  *Upstream
 	lock      sync.Mutex
@@ -39,7 +40,7 @@ func NewCacheHandler() (h *CacheHandler) {
 
 	h = new(CacheHandler)
 	h.name = GConfig["common.name"].(string)
-	h.store = NewStoreManager()
+	h.devices = NewDeviceManager()
 	h.heartBeat, err = net.DialUDP("udp", nil, addr)
 	Success(err)
 
@@ -78,7 +79,7 @@ func (h *CacheHandler) Start() {
 func (h *CacheHandler) Close() {
 	Lwarn(h, "close")
 	h.heartBeat.Close()
-	h.store.Close()
+	h.devices.Close()
 }
 
 func (h *CacheHandler) Handle(trans *Transaction) {
@@ -109,20 +110,16 @@ func (h *CacheHandler) get(trans *Transaction) {
 	var ranges []int
 	var start, end int
 
-	id := DecodeKey(trans.Req.Path)
+	id := md5.Sum(trans.Req.Path)
+	// TODO handle request
 	if rg, ok := trans.Req.Headers["range"]; ok {
 		start, end = parse_range(rg[2])
 	}
 
-	item, data, cache := h.store.Get(id)
-
-	rb := GConfig["cache.range.block"].(int)
-	if item != nil {
-		rb = int(item.RBSize)
-	}
+	item, data, cache := h.devices.Get(Key{id, 0})
 
 	for _, rg := range ranges {
-		item, data, cache := h.store.Get(id)
+		item, data, cache := h.devices.Get(id)
 		if item == nil {
 			trans.SvrMsg = "miss"
 			if h.upstream == nil {
@@ -157,7 +154,6 @@ func (h *CacheHandler) del(trans *Transaction) {
 	}
 
 	if hdr, ok := trans.Req.Headers["hornet-group"]; ok {
-		g := DecodeKey(hdr[2])
 		h.store.DeleteBatch(func(item *Item) bool {
 			return item.Grp == g
 		})

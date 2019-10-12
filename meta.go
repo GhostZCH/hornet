@@ -10,6 +10,8 @@ import (
 	"sync"
 )
 
+const RAW_LIMIT int = 256
+
 type Hash [md5.Size]byte
 
 type Key struct {
@@ -19,14 +21,16 @@ type Key struct {
 
 type Item struct {
 	Key      Key
-	GroupCRC uint64 //crc64
 	Block    int64
 	Off      int64
 	Expire   int64
-	BodyLen  int64
 	HeadLen  int64
-	EtagCRC  uint32
+	BodyLen  int64
+	TotalLen int64
 	Tag      int64
+	TypeCRC  uint64 //crc64
+	EtagCRC  uint64 //crc64
+	GroupCRC uint64 //crc64
 	RawKey   []byte
 }
 
@@ -127,6 +131,10 @@ func (m *Meta) Add(k Key) {
 		b.Items[k] = b.putting[k]
 	}
 	delete(b.putting, k)
+
+	if len(b.Items[k].RawKey) > RAW_LIMIT {
+		b.Items[k].RawKey = b.Items[k].RawKey[:RAW_LIMIT]
+	}
 }
 
 func (m *Meta) DeleteBatch(match func(*Item) bool) uint {

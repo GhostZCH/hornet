@@ -52,15 +52,15 @@ func (d *Device) clear() {
 	}
 }
 
-func (d *Device) Alloc(k Key, head int64, body int64) (item *Item, data []byte) {
+func (d *Device) Alloc(k Key, head, body int64) (item *Item, data []byte) {
 	item = d.meta.Alloc(k)
 	if item == nil {
 		return nil, nil
 	}
 
-	item.HeadLen = header
+	item.HeadLen = head
 	item.BodyLen = body
-	item.Block, item.Off, data = d.store.Alloc(header + body)
+	item.Block, item.Off, data = d.store.Alloc(head + body)
 	d.clear()
 
 	return item, data
