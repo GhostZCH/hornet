@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+var REQ_RANGE_REG = regexp.MustCompile("bytes=(\\d+)?-(\\d+)?")
+
 type LockKey struct {
 	id      Key
 	rbSize  uint32
@@ -98,7 +100,7 @@ func (h *CacheHandler) Handle(trans *Transaction) {
 	case 'G':
 		h.get(trans)
 	case 'P':
-		h.get(trans)
+		h.put(trans)
 	case 'D':
 		h.del(trans)
 	}
@@ -107,19 +109,18 @@ func (h *CacheHandler) Handle(trans *Transaction) {
 }
 
 func (h *CacheHandler) get(trans *Transaction) {
-	var ranges []int
-	var start, end int
-
+	start, end := 0, -1
 	id := md5.Sum(trans.Req.Path)
-	// TODO handle request
+
+	ranges := []uint32{0}
 	if rg, ok := trans.Req.Headers["range"]; ok {
 		start, end = parse_range(rg[2])
+
 	}
 
-	item, data, cache := h.devices.Get(Key{id, 0})
-
-	for _, rg := range ranges {
-		item, data, cache := h.devices.Get(id)
+	for i, r := range ranges {
+		k := Key{ID: id, Range: r}
+		item, data, cache := h.devices.Get(k)
 		if item == nil {
 			trans.SvrMsg = "miss"
 			if h.upstream == nil {
@@ -142,6 +143,10 @@ func (h *CacheHandler) get(trans *Transaction) {
 			return
 		}
 	}
+}
+
+func (h *CacheHandler) put(trans *Transaction) {
+	return
 }
 
 func (h *CacheHandler) del(trans *Transaction) {
@@ -235,6 +240,7 @@ func parse_range(r []byte) (start, end int) {
 
 	if len(m[2]) != 0 {
 		end, _ = strconv.Atoi(string(m[2]))
+		end++
 	}
 
 	if start >= end {

@@ -17,7 +17,6 @@ var HTTP_END []byte = []byte("\r\n")
 var HTTP_SEMICOLON = []byte(": ")
 var RSP_MAP = map[int]string{200: "200 OK", 201: "201 Created", 206: "206 Partial Content"}
 
-var REQ_RANGE_REG = regexp.MustCompile("bytes=(\\d+)?-(\\d+)?")
 var RSP_RANGE_REG = regexp.MustCompile("bytes (\\d+)-(\\d+)/(\\d+)")
 var HEADER_REG = regexp.MustCompile("(\\S+):\\s*(\\S*)\r\n")
 var RSP_REG = regexp.MustCompile("HTTP/1.1 (\\d+) \\w+\r\n([\\S\\s]*)\r\n([\\S\\s]*)")

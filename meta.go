@@ -15,8 +15,8 @@ const RAW_LIMIT int = 256
 type Hash [md5.Size]byte
 
 type Key struct {
-	ID         Hash
-	RangeIndex uint16 // index of range block
+	ID    Hash
+	Range uint32 // index of range block
 }
 
 type Item struct {
