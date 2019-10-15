@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"crypto/md5"
 	"errors"
 	"fmt"
+	"hash/crc64"
 	"net"
 	"regexp"
 	"strconv"
@@ -99,8 +101,6 @@ func (h *CacheHandler) Handle(trans *Transaction) {
 	switch trans.Req.Method[0] {
 	case 'G':
 		h.get(trans)
-	case 'P':
-		h.put(trans)
 	case 'D':
 		h.del(trans)
 	}
@@ -109,66 +109,113 @@ func (h *CacheHandler) Handle(trans *Transaction) {
 }
 
 func (h *CacheHandler) get(trans *Transaction) {
-	start, end := 0, -1
 	id := md5.Sum(trans.Req.Path)
 
-	ranges := []uint32{0}
+	isRange, start, end := false, int64(0), int64(-1)
 	if rg, ok := trans.Req.Headers["range"]; ok {
+		isRange = true
 		start, end = parse_range(rg[2])
-
 	}
 
-	for i, r := range ranges {
-		k := Key{ID: id, Range: r}
+	// TODO
+	total := 0
+	var header []byte = nil
+	for r := start / RANGE_LIMIT; end == -1 || r*RANGE_LIMIT < end; r++ {
+		k := Key{ID: id, Range: uint32(r)}
 		item, data, cache := h.devices.Get(k)
 		if item == nil {
-			trans.SvrMsg = "miss"
-			if h.upstream == nil {
-				trans.Rsp.Status = 404
-				return
-			}
-
 			h.pull(trans)
-			item, data, cache = h.store.Get(id)
+			item, data, cache = h.devices.Get(k)
 			*cache = "miss"
 		}
 
-		if item != nil {
-			trans.SvrMsg = *cache
-			via := fmt.Sprintf("X-Via-Cache: %s %s\r\n", h.name, *cache)
-			trans.Rsp.Status = 200
-			trans.Rsp.Headers = append(trans.Rsp.Headers, []byte(via))
-			trans.Rsp.Headers = append(trans.Rsp.Headers, data[:item.HeadLen])
-			trans.Rsp.Bodys = append(trans.Rsp.Bodys, data[item.HeadLen:])
+		if item == nil {
+			trans.Rsp.Status = 500
+			trans.Rsp.Headers = nil
+			trans.Rsp.Bodys = nil
 			return
 		}
-	}
-}
 
-func (h *CacheHandler) put(trans *Transaction) {
-	return
+		total = int(item.TotalLen)
+		if header == nil {
+			header = data[:item.HeadLen]
+		}
+		if end == -1 || end > item.TotalLen {
+			end = item.TotalLen
+		}
+
+		trans.SvrMsg += fmt.Sprintf("%s:%s", h.name, *cache)
+		via := fmt.Sprintf("X-Via-Cache: %s %s\r\n", h.name, *cache)
+		trans.Rsp.Headers = append(trans.Rsp.Headers, []byte(via))
+
+		s, e := start-r*RANGE_LIMIT+item.HeadLen, end-r*RANGE_LIMIT
+		if e > RANGE_LIMIT {
+			e = RANGE_LIMIT
+		}
+		if s < 0 {
+			s = 0
+		}
+		trans.Rsp.Bodys = append(trans.Rsp.Bodys, data[s+item.HeadLen:e+item.HeadLen])
+	}
+
+	trans.Rsp.Status = 200
+	if isRange {
+		trans.Rsp.Status = 206
+		rg := fmt.Sprintf("Content-Range: %d-%d/%d", start, end, total)
+	}
+	trans.Rsp.Headers = append(trans.Rsp.Headers, header)
 }
 
 func (h *CacheHandler) del(trans *Transaction) {
-	trans.Rsp.Status = 200
-
-	if trans.Req.Path != nil {
-		id := DecodeKey(trans.Req.Path)
-		h.store.Delete(id)
-		return
+	trans.Rsp.Status = 400
+	group, ok := trans.Req.Headers["hornet-group"]
+	if !ok {
+		panic(errors.New("NO_GROUP"))
 	}
+	groupCRC := crc64.Checksum(group[2], nil)
 
-	if hdr, ok := trans.Req.Headers["hornet-group"]; ok {
-		h.store.DeleteBatch(func(item *Item) bool {
-			return item.Grp == g
+	// delete by group
+	if bytes.Equal(trans.Req.Path, []byte("/all-items")) {
+		h.devices.Del(func(item *Item) bool {
+			return item.GroupCRC == groupCRC
 		})
 		return
 	}
 
+	// delete by id
+	if !bytes.Equal(trans.Req.Path, []byte("/")) {
+		id := md5.Sum(trans.Req.Path)
+		h.devices.Del(func(item *Item) bool {
+			return item.Key.ID == id
+		})
+		return
+	}
+
+	// delete by type
+	if hdr, ok := trans.Req.Headers["hornet-type"]; ok {
+		t := crc64.Checksum(hdr[2], nil)
+		h.devices.Del(func(item *Item) bool {
+			return item.GroupCRC == groupCRC && item.TypeCRC == t
+		})
+		return
+	}
+
+	// delete by mask
+	if hdr, ok := trans.Req.Headers["hornet-mask"]; ok {
+		mask, e := strconv.ParseInt(string(hdr[2]), 10, 64)
+		Success(e)
+		h.devices.Del(func(item *Item) bool {
+			return item.GroupCRC == groupCRC && item.Tag&mask != 0
+		})
+
+		return
+	}
+
+	// delete by regex
 	if hdr, ok := trans.Req.Headers["hornet-regex"]; ok {
 		reg := regexp.MustCompile(string(hdr[2]))
-		h.store.DeleteBatch(func(item *Item) bool {
-			return reg.Match(item.RawKey)
+		h.devices.Del(func(item *Item) bool {
+			return item.GroupCRC == groupCRC && reg.Match(item.RawKey)
 		})
 		return
 	}
@@ -226,7 +273,7 @@ func (h *CacheHandler) pull(trans *Transaction) {
 	}
 }
 
-func parse_range(r []byte) (start, end int) {
+func parse_range(r []byte) (start, end int64) {
 	start, end = 0, -1
 
 	m := REQ_RANGE_REG.FindSubmatch(r)
@@ -235,11 +282,11 @@ func parse_range(r []byte) (start, end int) {
 	}
 
 	if len(m[1]) != 0 {
-		start, _ = strconv.Atoi(string(m[1]))
+		start, _ = strconv.ParseInt(string(m[1]), 10, 64)
 	}
 
 	if len(m[2]) != 0 {
-		end, _ = strconv.Atoi(string(m[2]))
+		end, _ = strconv.ParseInt(string(m[2]), 10, 64)
 		end++
 	}
 

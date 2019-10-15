@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
 )
+
+var REQ_REG = regexp.MustCompile("^(GET|DELETE) (.*) HTTP/1.1\r\n([\\S\\s]*)\r\n([\\S\\s]*)")
 
 type InRequest struct {
 	Recv    []byte
@@ -16,7 +19,7 @@ type InRequest struct {
 	Headers map[string][][]byte
 }
 
-func (r *InRequest) Parse(headers bool) {
+func (r *InRequest) Parse() {
 	m := REQ_REG.FindSubmatch(r.Recv)
 	if len(m) == 0 {
 		panic(errors.New("REQ_FORMAT_ERROR"))
@@ -24,12 +27,10 @@ func (r *InRequest) Parse(headers bool) {
 
 	r.Method, r.Path, r.Head, r.Body = m[1], m[2], m[3], m[4]
 
-	if headers {
-		r.Headers = make(map[string][][]byte)
-		headers := HEADER_REG.FindAllSubmatch(r.Head, -1)
-		for _, h := range headers {
-			r.Headers[string(bytes.ToLower(h[1]))] = h
-		}
+	r.Headers = make(map[string][][]byte)
+	headers := HEADER_REG.FindAllSubmatch(r.Head, -1)
+	for _, h := range headers {
+		r.Headers[string(bytes.ToLower(h[1]))] = h
 	}
 }
 

@@ -2,8 +2,6 @@ package main
 
 import (
 	"errors"
-	"hash/crc64"
-	"regexp"
 )
 
 const RANGE_SIZE uint32 = uint32(4 * 1024 * 1024)
@@ -52,7 +50,7 @@ func (dm *DeviceManager) Add(dev int, k Key) {
 	dm.devices[dev].Add(k)
 }
 
-func (dm *DeviceManager) Get(k Key) (*Item, [][]byte, *string) {
+func (dm *DeviceManager) Get(k Key) (*Item, []byte, *string) {
 	for i, d := range dm.devices {
 		// TODO range
 		// bytes 0- 怎么处理？
@@ -82,44 +80,6 @@ func (dm *DeviceManager) DelByID(id Hash) {
 	for _, s := range dm.devices {
 		s.DeleteBatch(func(item *Item) {
 			return item.Key.ID == id
-		})
-	}
-}
-
-func (dm *DeviceManager) DelByGroup(group []byte) {
-	g := crc64.Checksum(group, nil)
-	for _, s := range dm.devices {
-		s.DeleteBatch(func(item *Item) {
-			return item.GroupCRC == g
-		})
-	}
-}
-
-func (dm *DeviceManager) DelByType(group, itemType []byte) {
-	g := crc64.Checksum(group, nil)
-	t := crc64.Checksum(itemType, nil)
-	for _, s := range dm.devices {
-		s.DeleteBatch(func(item *Item) {
-			return item.GroupCRC == g && item.TypeCRC == t
-		})
-	}
-}
-
-func (dm *DeviceManager) DelByTag(group []byte, mask int64) {
-	g := crc64.Checksum(group, nil)
-	for _, s := range dm.devices {
-		s.DeleteBatch(func(item *Item) {
-			return item.GroupCRC == g && item.Tag&mask != 0
-		})
-	}
-}
-
-func (dm *DeviceManager) DelByRegex(group []byte, regex []byte) {
-	g := crc64.Checksum(group, nil)
-	r := regexp.MustCompile(string(reg))
-	for _, s := range dm.devices {
-		s.DeleteBatch(func(item *Item) {
-			return item.GroupCRC == g && r.Match(item.RawKey)
 		})
 	}
 }
