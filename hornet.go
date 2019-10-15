@@ -7,6 +7,8 @@ import (
 	"runtime/debug"
 )
 
+const VERSION int64 = 1000000
+
 func parseArgs() (string, string) {
 	path := flag.String("conf", "hornet.yaml", "conf file path")
 	mode := flag.String("mode", "cache", "start mode cache or proxy")

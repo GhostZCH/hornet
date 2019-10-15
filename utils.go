@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"hash/crc64"
 	"io/ioutil"
 	"log"
 	"net"
@@ -203,11 +204,12 @@ func SendHttp(conn *net.TCPConn, per []byte, headers [][]byte, bodys [][]byte) i
 }
 
 func GenerateItem(headers map[string][][]byte) (*Item, []byte) {
+	// TODO
 	item := &Item{true, &ItemInfo{}}
 	info := item.Info
 
 	if hdr, ok := headers["hornet-group"]; ok {
-		info.Grp = DecodeKey(hdr[2])
+		info.Grp = crc64.Checksum(hdr[2])
 	}
 
 	if h, ok := headers["content-length"]; ok {
@@ -244,7 +246,6 @@ func GenerateItem(headers map[string][][]byte) (*Item, []byte) {
 	//TODO  Expire
 	//TODO  etag
 	//TODO  tags
-	//TODO  bitmap
 
 	return item, buf.Bytes()
 }

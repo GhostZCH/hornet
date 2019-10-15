@@ -120,11 +120,11 @@ func (h *CacheHandler) get(trans *Transaction) {
 	// TODO
 	total := 0
 	var header []byte = nil
-	for r := start / RANGE_LIMIT; end == -1 || r*RANGE_LIMIT < end; r++ {
+	for r := start / RANGE_SIZE; end == -1 || r*RANGE_SIZE < end; r++ {
 		k := Key{ID: id, Range: uint32(r)}
 		item, data, cache := h.devices.Get(k)
 		if item == nil {
-			h.pull(trans)
+			h.pull(trans, k)
 			item, data, cache = h.devices.Get(k)
 			*cache = "miss"
 		}
@@ -140,22 +140,22 @@ func (h *CacheHandler) get(trans *Transaction) {
 		if header == nil {
 			header = data[:item.HeadLen]
 		}
-		if end == -1 || end > item.TotalLen {
-			end = item.TotalLen
+		if end == -1 || end > int64(item.TotalLen) {
+			end = int64(item.TotalLen)
 		}
 
 		trans.SvrMsg += fmt.Sprintf("%s:%s", h.name, *cache)
 		via := fmt.Sprintf("X-Via-Cache: %s %s\r\n", h.name, *cache)
 		trans.Rsp.Headers = append(trans.Rsp.Headers, []byte(via))
 
-		s, e := start-r*RANGE_LIMIT+item.HeadLen, end-r*RANGE_LIMIT
-		if e > RANGE_LIMIT {
-			e = RANGE_LIMIT
+		s, e := start-r*int64(RANGE_SIZE), end-r*int64(RANGE_SIZE)
+		if e > RANGE_SIZE {
+			e = RANGE_SIZE
 		}
 		if s < 0 {
 			s = 0
 		}
-		trans.Rsp.Bodys = append(trans.Rsp.Bodys, data[s+item.HeadLen:e+item.HeadLen])
+		trans.Rsp.Bodys = append(trans.Rsp.Bodys, data[s+int64(item.HeadLen):e+int64(item.HeadLen)])
 	}
 
 	trans.Rsp.Status = 200
@@ -174,6 +174,7 @@ func (h *CacheHandler) del(trans *Transaction) {
 	}
 	groupCRC := crc64.Checksum(group[2], nil)
 
+	trans.Rsp.Status = 200
 	// delete by group
 	if bytes.Equal(trans.Req.Path, []byte("/all-items")) {
 		h.devices.Del(func(item *Item) bool {
@@ -186,7 +187,7 @@ func (h *CacheHandler) del(trans *Transaction) {
 	if !bytes.Equal(trans.Req.Path, []byte("/")) {
 		id := md5.Sum(trans.Req.Path)
 		h.devices.Del(func(item *Item) bool {
-			return item.Key.ID == id
+			return item.GroupCRC == groupCRC && item.Key.ID == id
 		})
 		return
 	}
@@ -223,22 +224,28 @@ func (h *CacheHandler) del(trans *Transaction) {
 	panic(errors.New("NO_DEL_PARAMS"))
 }
 
-func (h *CacheHandler) pull(trans *Transaction) {
+func (h *CacheHandler) pull(trans *Transaction, k Key) {
 	// TODO
 	var u *net.TCPConn
-	var e error
 
 	if len(h.upstream.free) != 0 {
 		u = <-h.upstream.free
 	} else {
+		var e error
 		u, e = net.DialTCP("tcp", nil, h.upstream.addr)
 		Success(e)
 	}
 
-	// req := OutRequest{Method: trans.Req.Method, Path: trans.Req.Path}
-	// todo modify headers
+	req := OutRequest{Method: trans.Req.Method, Path: trans.Req.Path}
+	for k, v := range trans.Req.Headers {
+		req.Headers = append(req.Headers, v[0])
+	}
 
-	u.Write(trans.Req.Recv)
+	s, e := int64(k.Range)*RANGE_SIZE, int64(k.Range)*RANGE_SIZE-1
+	r := fmt.Sprintf("Range: bytes=%d-%d", s, e)
+	req.Headers = append(req.Headers, []byte(r))
+
+	req.Send(u)
 
 	recv := make([]byte, GConfig["common.http.header.maxlen"].(int))
 	n, err := u.Read(recv)
@@ -246,15 +253,10 @@ func (h *CacheHandler) pull(trans *Transaction) {
 
 	rsp := InRespose{}
 	rsp.Recv = recv[:n]
-	rsp.Parse(true)
+	rsp.Parse()
 
 	item, head := GenerateItem(rsp.Headers)
-	// TODO range
-	if trans.Req.Path != nil {
-		item.ID = DecodeKey(trans.Req.Path)
-	}
-
-	data := h.store.Add(item)
+	data, dev := h.devices.Alloc(item)
 
 	copy(data, head)
 	data = data[len(head):]
@@ -263,15 +265,14 @@ func (h *CacheHandler) pull(trans *Transaction) {
 	data = data[len(rsp.Body):]
 
 	if n, e := u.Read(data); n != len(data) || e != nil {
-		h.store.Delete(item.ID)
-		panic(e) // n != len(data)
+		h.devices.DelPut(item.Key)
 	}
-
-	trans.Rsp.Status = 201
 
 	if len(h.upstream.free) < h.upstream.keep {
 		h.upstream.free <- u
 	}
+
+	h.devices.Add(dev, item.Key)
 }
 
 func parse_range(r []byte) (start, end int64) {

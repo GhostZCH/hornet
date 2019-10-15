@@ -10,6 +10,7 @@ import (
 	"sync"
 )
 
+const META_VERSION int64 = VERSION - VERSION%1000000
 const RAW_LIMIT int = 256
 
 type Hash [md5.Size]byte
@@ -24,9 +25,9 @@ type Item struct {
 	Block    int64
 	Off      int64
 	Expire   int64
-	HeadLen  int64
-	BodyLen  int64
-	TotalLen int64
+	HeadLen  uint64
+	BodyLen  uint64
+	TotalLen uint64
 	Tag      int64
 	TypeCRC  uint64 //crc64
 	EtagCRC  uint64 //crc64
@@ -55,19 +56,18 @@ func NewMeta(dir string) *Meta {
 		m.Buckets[i].putting = make(map[Key]*Item)
 	}
 
-	f, err := os.Open(s.mpath)
+	f, err := os.Open(m.path)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			panic(err)
 		}
-		Lwarn(s.name, " no meta file found")
-		return
+		Lwarn(m.path, " no meta file found")
+		return m
 	}
-
 	defer f.Close()
-	defer os.Remove(s.mpath)
 
-	Success(gob.NewDecoder(r).Decode(m))
+	Success(gob.NewDecoder(f).Decode(m))
+	os.Remove(m.path)
 
 	return m
 }
@@ -83,7 +83,7 @@ func (m *Meta) Dump(blocks []int64) {
 	f, err := os.OpenFile(tmp, os.O_RDWR|os.O_CREATE, 0600)
 	Success(err)
 
-	Success(gob.NewEncoder(w).Encode(m))
+	Success(gob.NewEncoder(f).Encode(m))
 	f.Close()
 
 	Success(os.Rename(tmp, m.path))
@@ -101,21 +101,21 @@ func (m *Meta) Get(k Key) (item *Item) {
 	return nil
 }
 
-func (m *Meta) Alloc(k Key) (item *Item) {
-	b := m.getBucket(k.ID)
+func (m *Meta) Alloc(item *Item) bool {
+	b := m.getBucket(item.Key.ID)
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	if i, ok := b.Items[k]; ok {
-		return nil
+	if _, ok := b.Items[item.Key]; ok {
+		return false
 	}
 
-	if i, ok := b.putting[k]; ok {
-		return nil
+	if _, ok := b.putting[item.Key]; ok {
+		return false
 	}
 
-	b.putting[k] = new(Item)
-	return b.putting[k]
+	b.putting[item.Key] = item
+	return true
 }
 
 func (m *Meta) Add(k Key) {
@@ -153,6 +153,13 @@ func (m *Meta) DeleteBatch(match func(*Item) bool) uint {
 		}()
 	}
 	return n
+}
+
+func (m *Meta) DeletePut(k Key) {
+	b := m.getBucket(k.ID)
+	b.lock.Lock()
+	defer b.lock.Unlock()
+	delete(b.putting, k)
 }
 
 func (m *Meta) getBucket(id Hash) *Bucket {

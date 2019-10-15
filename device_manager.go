@@ -4,7 +4,7 @@ import (
 	"errors"
 )
 
-const RANGE_SIZE uint32 = uint32(4 * 1024 * 1024)
+const RANGE_SIZE int64 = 4 * 1024 * 1024
 
 var DEVICES [3]string = [3]string{"mem", "ssd", "hdd"}
 
@@ -37,13 +37,13 @@ func (dm *DeviceManager) Close() {
 	}
 }
 
-func (dm *DeviceManager) Alloc(k Key, head, body int64) (*Item, []byte, int) {
+func (dm *DeviceManager) Alloc(item *Item) ([]byte, int) {
 	for i := len(DEVICES) - 1; i > 0; i-- {
 		if dm.devices[i] != nil {
-			return dm.devices[i].Alloc(k, head, body)
+			return dm.devices[i].Alloc(item), i
 		}
 	}
-	panic(errors.New("NO_DEVICE_FOR_ALLOC"))
+	return nil, -1
 }
 
 func (dm *DeviceManager) Add(dev int, k Key) {
@@ -52,12 +52,11 @@ func (dm *DeviceManager) Add(dev int, k Key) {
 
 func (dm *DeviceManager) Get(k Key) (*Item, []byte, *string) {
 	for i, d := range dm.devices {
-		// TODO range
-		// bytes 0- 怎么处理？
 		if item, data := d.Get(k); item != nil {
 			for j := i - 1; j >= 0; j-- {
-				if sm.stores[j] != nil {
-					new, buf := dm.devices[j].Alloc(k, item.HeadLen, item.BodyLen)
+				if dm.devices[j] != nil {
+					new := *item
+					buf := dm.devices[j].Alloc(&new)
 					copy(buf, data)
 					dm.devices[j].Add(k)
 					break
@@ -70,18 +69,16 @@ func (dm *DeviceManager) Get(k Key) (*Item, []byte, *string) {
 	return nil, nil, nil
 }
 
-func (dm *DeviceManager) Del(match func(*Item) bool) {
+func (dm *DeviceManager) Del(match func(*Item) bool) uint {
+	n := uint(0)
 	for _, d := range dm.devices {
-		s.DeleteBatch(match)
+		n += d.DeleteBatch(match)
 	}
+	return n
 }
 
-func (dm *DeviceManager) DelByID(id Hash) {
-	for _, s := range dm.devices {
-		s.DeleteBatch(func(item *Item) {
-			return item.Key.ID == id
-		})
+func (dm *DeviceManager) DelPut(k Key) {
+	for _, d := range dm.devices {
+		d.DeletePut(k)
 	}
 }
-
-//TODO delete by mask

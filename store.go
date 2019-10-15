@@ -8,20 +8,20 @@ import (
 	"time"
 )
 
-const BLOCK_COUNT int = 128
+const BLOCK_COUNT uint64 = 512
 
 type Store struct {
 	dir      string
-	cap      int64
-	size     int64
-	bSize    int64
-	curOff   int64
+	cap      uint64
+	size     uint64
+	bSize    uint64
+	curOff   uint64
 	curBlock int64
 	lock     sync.RWMutex
 	blocks   map[int64][]byte
 }
 
-func NewStore(dir string, cap int64, blocks []uint32) *Store {
+func NewStore(dir string, cap uint64, blocks []int64) *Store {
 	s := &Store{
 		dir:      dir,
 		cap:      cap,
@@ -29,14 +29,14 @@ func NewStore(dir string, cap int64, blocks []uint32) *Store {
 		bSize:    cap / BLOCK_COUNT,
 		curOff:   cap / BLOCK_COUNT,
 		curBlock: 0,
-		blocks:   make(map[uint32][]byte)}
+		blocks:   make(map[int64][]byte)}
 
-	for b := range blocks {
+	for _, b := range blocks {
 		path := getPath(dir, b)
 		if info, err := os.Stat(path); err != nil {
 			Lwarn(fmt.Sprintf("stat %s error [%v]", path, err))
 		} else {
-			if data, err := mmap(path, info.Size); err != nil {
+			if data, err := mmap(path, int(info.Size())); err != nil {
 				Lwarn(fmt.Sprintf("mmap %s error [%v]", path, err))
 			} else {
 				s.blocks[b] = data
@@ -48,24 +48,26 @@ func NewStore(dir string, cap int64, blocks []uint32) *Store {
 }
 
 func (s *Store) GetBlocks() (blocks []int64) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	for b, _ := range s.blocks {
 		blocks = append(blocks, b)
 	}
 	return blocks
 }
 
-func (s *Store) Get(block, off, len int64) []byte {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+func (s *Store) Get(block, off int64, len uint64) []byte {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
 
-	if b, ok := s.lock[block]; ok {
-		return b[off : off+len]
+	if b, ok := s.blocks[block]; ok {
+		return b[off : off+int64(len)]
 	}
 
 	return nil
 }
 
-func (s *Store) Alloc(size uint32) (block uint32, off int64, data []byte) {
+func (s *Store) Alloc(size uint64) (block int64, off int64, data []byte) {
 	if size > s.bSize {
 		s.addBlock(size) // single block for big data
 	} else if size+s.curOff > s.bSize {
@@ -81,6 +83,36 @@ func (s *Store) Alloc(size uint32) (block uint32, off int64, data []byte) {
 	return block, off, data
 }
 
+func (s *Store) Clear() (blocks []int64) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	for len(s.blocks) >= 0 && s.size > s.cap {
+		min, data := s.minBlock()
+		path := getPath(s.dir, min)
+
+		Lwarn(fmt.Sprintf("Store.Clear: rm %s release %d]"), path, len(data))
+
+		s.size -= uint64(len(data))
+		delete(s.blocks, min)
+		blocks = append(blocks, min)
+
+		Success(os.Remove(path))
+		Success(syscall.Munmap(data))
+	}
+
+	return blocks
+}
+
+func (s *Store) Close() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	for _, data := range s.blocks {
+		syscall.Munmap(data)
+	}
+}
+
 func (s *Store) minBlock() (min int64, data []byte) {
 	min = 0
 	for i, d := range s.blocks {
@@ -91,38 +123,20 @@ func (s *Store) minBlock() (min int64, data []byte) {
 	return min, data
 }
 
-func (s *Store) Clear() []int64 {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	for len(s.blocks) >= 0 && s.size > s.cap {
-		min, data := s.minBlock()
-		path := s.getPath(min)
-
-		Lwarn(fmt.Sprintf("Store.Clear: rm %s release %d]"), path, len(data))
-
-		s.size -= len(data)
-		delete(s.blocks, min)
-
-		Success(os.Remove(path))
-		Success(syscall.Munmap(data))
-	}
-}
-
-func (s *Store) addBlock(size int) {
+func (s *Store) addBlock(size uint64) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	now := time.Now().UnixNano()
-	name := s.getPath(now)
-	s.blocks[now] = mmap(name, size)
-
-	s.curBlock = now
-	s.curOff = 0
-	s.size += size
-
-	timeout := GConfig["common.sock.req.timeout"].(int)
-	s.clear(timeout + 1)
+	name := getPath(s.dir, now)
+	if data, err := mmap(name, int(size)); err != nil {
+		s.blocks[now] = data
+		s.curBlock = now
+		s.curOff = 0
+		s.size += size
+	} else {
+		Lwarn("add block failed ", name)
+	}
 }
 
 func getPath(dir string, block int64) string {

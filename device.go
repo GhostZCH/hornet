@@ -1,5 +1,7 @@
 package main
 
+const BUCKET_LIMIT int = 1024
+
 type Device struct {
 	meta  *Meta
 	store *Store
@@ -11,9 +13,11 @@ func NewDevice(dir string, cap int) *Device {
 	}
 
 	m := NewMeta(dir)
-	s := NewStore(dir, cap, m.GetBlocks())
+	s := NewStore(dir, uint64(cap), m.GetBlocks())
 	d := &Device{store: s, meta: m}
 	d.clear()
+
+	return d
 }
 
 func (d *Device) Close() {
@@ -22,7 +26,7 @@ func (d *Device) Close() {
 }
 
 func (d *Device) Get(k Key) (*Item, []byte) {
-	if i := d.meta.Get(k); item != nil {
+	if i := d.meta.Get(k); i != nil {
 		if d := d.store.Get(i.Block, i.Off, i.BodyLen+i.HeadLen); d != nil {
 			return i, d
 		}
@@ -31,15 +35,15 @@ func (d *Device) Get(k Key) (*Item, []byte) {
 }
 
 func (d *Device) clear() {
-	for b := range d.store.Clear() {
-		d.DeleteBatch(func(item *Item) { return item.Block == b })
+	for _, b := range d.store.Clear() {
+		d.DeleteBatch(func(item *Item) bool { return item.Block == b })
 	}
 
 	// delete items in unloaded blocks if any
 	// should not run those code in normal conditions
-	for b := range m.GetBlocks() {
+	for _, b := range d.meta.GetBlocks() {
 		found := false
-		for i := range s.GetBlocks() {
+		for _, i := range d.store.GetBlocks() {
 			if i == b {
 				found = true
 				break
@@ -47,29 +51,30 @@ func (d *Device) clear() {
 		}
 		if !found {
 			Lwarn("delete items in unload block ", b)
-			m.DeleteBatch(func(item *Item) { return item.Block == b })
+			d.meta.DeleteBatch(func(item *Item) bool { return item.Block == b })
 		}
 	}
 }
 
-func (d *Device) Alloc(k Key, head, body int64) (item *Item, data []byte) {
-	item = d.meta.Alloc(k)
-	if item == nil {
-		return nil, nil
+func (d *Device) Alloc(item *Item) (data []byte) {
+	if !d.meta.Alloc(item) {
+		return nil
 	}
 
-	item.HeadLen = head
-	item.BodyLen = body
-	item.Block, item.Off, data = d.store.Alloc(head + body)
+	item.Block, item.Off, data = d.store.Alloc(item.HeadLen + item.BodyLen)
 	d.clear()
 
-	return item, data
+	return data
 }
 
 func (d *Device) Add(k Key) {
 	d.meta.Add(k)
 }
 
-func (d *Device) DeleteBatch(match func(*Item) bool) {
-	d.meta.DeleteBatch(match)
+func (d *Device) DeleteBatch(match func(*Item) bool) uint {
+	return d.meta.DeleteBatch(match)
+}
+
+func (d *Device) DeletePut(k Key) {
+	d.meta.DeletePut(k)
 }
