@@ -93,7 +93,7 @@ func (h *CacheHandler) Handle(trans *Transaction) {
 	Success(e)
 
 	trans.Req.Recv = buf[:n]
-	trans.Req.Parse(true)
+	trans.Req.Parse()
 	if h, ok := trans.Req.Headers["hornet-log"]; ok {
 		trans.ClientMsg = string(h[2])
 	}
@@ -224,6 +224,7 @@ func (h *CacheHandler) del(trans *Transaction) {
 }
 
 func (h *CacheHandler) pull(trans *Transaction) {
+	// TODO
 	var u *net.TCPConn
 	var e error
 
