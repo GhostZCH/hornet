@@ -203,13 +203,24 @@ func SendHttp(conn *net.TCPConn, per []byte, headers [][]byte, bodys [][]byte) i
 	return sum
 }
 
+var GMT = []byte("GMT")
+
+func FormatTime(dst []byte, date time.Time) []byte {
+	dst = date.In(time.UTC).AppendFormat(dst, time.RFC1123)
+	copy(dst[len(dst)-3:], GMT)
+	return dst
+}
+
+func ParseTime(date []byte) (time.Time, error) {
+	return time.Parse(time.RFC1123, string(date))
+}
+
 func GenerateItem(headers map[string][][]byte) (*Item, []byte) {
 	// TODO
-	item := &Item{true, &ItemInfo{}}
-	info := item.Info
+	item := &Item{}
 
 	if hdr, ok := headers["hornet-group"]; ok {
-		info.Grp = crc64.Checksum(hdr[2])
+		item.GroupCRC = crc64.Checksum(hdr[2], nil)
 	}
 
 	if h, ok := headers["content-length"]; ok {
