@@ -162,6 +162,7 @@ func (h *CacheHandler) get(trans *Transaction) {
 	if isRange {
 		trans.Rsp.Status = 206
 		rg := fmt.Sprintf("Content-Range: %d-%d/%d", start, end, total)
+		trans.Rsp.Headers = append(trans.Rsp.Headers, []byte(rg))
 	}
 	trans.Rsp.Headers = append(trans.Rsp.Headers, header)
 }
@@ -237,7 +238,7 @@ func (h *CacheHandler) pull(trans *Transaction, k Key) {
 	}
 
 	req := OutRequest{Method: trans.Req.Method, Path: trans.Req.Path}
-	for k, v := range trans.Req.Headers {
+	for _, v := range trans.Req.Headers {
 		req.Headers = append(req.Headers, v[0])
 	}
 
@@ -255,7 +256,7 @@ func (h *CacheHandler) pull(trans *Transaction, k Key) {
 	rsp.Recv = recv[:n]
 	rsp.Parse()
 
-	item, head := GenerateItem(rsp.Headers)
+	item, head := GenerateItem(k, trans.Req.Path, rsp.Headers)
 	data, dev := h.devices.Alloc(item)
 
 	copy(data, head)
