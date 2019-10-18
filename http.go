@@ -18,7 +18,6 @@ var RSP_MAP = map[int]string{
 	500: "500 Internal Server Error"}
 var REQ_FORMAT string = "%s /%s HTTP/1.1\r\n"
 var RSP_FORMAT string = "HTTP/1.1 %s\r\nContent-Length: %d\r\n"
-var RSP_RANGE_REG = regexp.MustCompile("bytes (\\d+)-(\\d+)/(\\d+)")
 var HEADER_REG = regexp.MustCompile("(\\S+):\\s*(\\S*)\r\n")
 var RSP_REG = regexp.MustCompile("HTTP/1.1 (\\d+) \\w+\r\n([\\S\\s]*)\r\n([\\S\\s]*)")
 var REQ_REG = regexp.MustCompile("^(GET|DELETE) (.*) HTTP/1.1\r\n([\\S\\s]*)\r\n([\\S\\s]*)")

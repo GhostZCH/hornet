@@ -215,12 +215,19 @@ func ParseTime(date []byte) (time.Time, error) {
 	return time.Parse(time.RFC1123, string(date))
 }
 
-func GenerateItem(k Key, path []byte, headers map[string][][]byte) (*Item, []byte) {
-	// TODO
+func GenerateItem(isRange bool, k Key, path []byte, headers map[string][][]byte) (*Item, []byte) {
 	item := &Item{Key: k, RawKey: path}
 
 	if hdr, ok := headers["hornet-group"]; ok {
 		item.GroupCRC = crc64.Checksum(hdr[2], nil)
+	}
+
+	if hdr, ok := headers["hornet-group"]; ok {
+		item.GroupCRC = crc64.Checksum(hdr[2], nil)
+	}
+
+	if h, ok := headers["hornet-type"]; ok {
+		item.TypeCRC = crc64.Checksum(h[2], nil)
 	}
 
 	if h, ok := headers["content-length"]; ok {
@@ -233,6 +240,20 @@ func GenerateItem(k Key, path []byte, headers map[string][][]byte) (*Item, []byt
 		panic(errors.New("CONTENT_LEN_NOT_SET"))
 	}
 
+	if isRange {
+		if h, ok := headers["content-range"]; ok {
+			if n, e := strconv.ParseInt(string(h[2]), 10, 64); e != nil {
+				panic(e)
+			} else {
+				item.BodyLen = uint64(n)
+			}
+		} else {
+			panic(errors.New("CONTENT_LEN_NOT_SET"))
+		}
+	} else {
+		item.TotalLen = item.BodyLen
+	}
+
 	if h, ok := headers["expire"]; ok {
 		if d, e := ParseTime(h[2]); e == nil {
 			item.Expire = d.Unix()
@@ -241,12 +262,18 @@ func GenerateItem(k Key, path []byte, headers map[string][][]byte) (*Item, []byt
 		}
 	} else {
 		item.Expire = time.Now().Unix() + 3600*12
-		//TODO
-		headers["expire"] = {[]bytes(""),[]bytes(""),[]bytes("")}
+		expireHeader := []byte("Expires: ")
+		expire := FormatTime(expireHeader, time.Now().Add(time.Hour*12))
+		headers["expire"] = [][]byte{expireHeader, []byte("Expires"), expire}
 	}
 
-	//TODO  etag
-	//TODO  tags
+	if h, ok := headers["hornet-tags"]; ok {
+		if tag, err := strconv.ParseInt(string(h[2]), 10, 64); err != nil {
+			panic(err)
+		} else {
+			item.Tag = tag
+		}
+	}
 
 	for _, h := range GConfig["cache.http.header.discard"].([]interface{}) {
 		delete(headers, h.(string))

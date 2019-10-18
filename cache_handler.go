@@ -9,11 +9,13 @@ import (
 	"net"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 var REQ_RANGE_REG = regexp.MustCompile("bytes=(\\d+)?-(\\d+)?")
+var RSP_RANGE_REG = regexp.MustCompile("(\\d+)-(\\d+)/(\\d+)")
 
 type LockKey struct {
 	id      Key
@@ -124,7 +126,7 @@ func (h *CacheHandler) get(trans *Transaction) {
 		k := Key{ID: id, Range: uint32(r)}
 		item, data, cache := h.devices.Get(k)
 		if item == nil {
-			h.pull(trans, k)
+			h.pull(isRange, trans, k)
 			item, data, cache = h.devices.Get(k)
 			*cache = "miss"
 		}
@@ -225,7 +227,7 @@ func (h *CacheHandler) del(trans *Transaction) {
 	panic(errors.New("NO_DEL_PARAMS"))
 }
 
-func (h *CacheHandler) pull(trans *Transaction, k Key) {
+func (h *CacheHandler) pull(isRange bool, trans *Transaction, k Key) {
 	// TODO
 	var u *net.TCPConn
 
@@ -256,7 +258,7 @@ func (h *CacheHandler) pull(trans *Transaction, k Key) {
 	rsp.Recv = recv[:n]
 	rsp.Parse()
 
-	item, head := GenerateItem(k, trans.Req.Path, rsp.Headers)
+	item, head := generateItem(isRange, k, trans.Req.Path, rsp.Headers)
 	data, dev := h.devices.Alloc(item)
 
 	copy(data, head)
@@ -298,4 +300,86 @@ func parse_range(r []byte) (start, end int64) {
 	}
 
 	return start, end
+}
+
+func generateItem(isRange bool, k Key, path []byte, headers map[string][][]byte) (*Item, []byte) {
+	item := &Item{Key: k, RawKey: path}
+
+	if hdr, ok := headers["hornet-group"]; ok {
+		item.GroupCRC = crc64.Checksum(hdr[2], nil)
+	}
+
+	if hdr, ok := headers["hornet-group"]; ok {
+		item.GroupCRC = crc64.Checksum(hdr[2], nil)
+	}
+
+	if h, ok := headers["hornet-type"]; ok {
+		item.TypeCRC = crc64.Checksum(h[2], nil)
+	}
+
+	if h, ok := headers["content-length"]; ok {
+		if n, e := strconv.ParseInt(string(h[2]), 10, 64); e != nil {
+			panic(e)
+		} else {
+			item.BodyLen = uint64(n)
+		}
+	} else {
+		panic(errors.New("CONTENT_LEN_NOT_SET"))
+	}
+
+	if !isRange {
+		item.TotalLen = item.BodyLen
+	} else {
+		if h, ok := headers["content-range"]; !ok {
+			panic(errors.New("CONTENT_RANGE_NOT_SET"))
+		} else {
+			if re := RSP_RANGE_REG.FindSubmatch(h[2]); len(re) != 4 {
+				panic(errors.New("CONTENT_RANGE_WRONG"))
+			} else {
+				if tmp, err := strconv.ParseInt(string(re[3]), 10, 64); err != nil {
+					panic(errors.New("CONTENT_RANGE_WRONG"))
+				} else {
+					item.TotalLen = uint64(tmp)
+				}
+			}
+		}
+	}
+
+	if h, ok := headers["expire"]; ok {
+		if d, e := ParseTime(h[2]); e == nil {
+			item.Expire = d.Unix()
+		} else {
+			panic(e)
+		}
+	} else {
+		item.Expire = time.Now().Unix() + 3600*12
+		expireHeader := []byte("Expires: ")
+		expire := FormatTime(expireHeader, time.Now().Add(time.Hour*12))
+		headers["expire"] = [][]byte{expireHeader, []byte("Expires"), expire}
+	}
+
+	if h, ok := headers["hornet-tags"]; ok {
+		if tag, err := strconv.ParseInt(string(h[2]), 10, 64); err != nil {
+			panic(err)
+		} else {
+			item.Tag = tag
+		}
+	}
+
+	for _, h := range GConfig["cache.http.header.discard"].([]interface{}) {
+		delete(headers, h.(string))
+	}
+
+	buf := new(bytes.Buffer)
+	for k, v := range headers {
+		if !strings.HasPrefix(k, "hornet") {
+			buf.Write(v[0])
+		}
+	}
+
+	head := buf.Bytes()
+
+	item.HeadLen = uint64(len(head))
+
+	return item, buf.Bytes()
 }
