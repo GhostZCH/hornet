@@ -37,8 +37,8 @@ func main() {
 	switch mode {
 	case "cache":
 		h = NewCacheHandler()
-	// case "proxy":
-	// 	h = NewProxyHandler()
+	case "proxy":
+		h = NewProxyHandler()
 	default:
 		panic(errors.New("unknown mode:" + mode))
 	}

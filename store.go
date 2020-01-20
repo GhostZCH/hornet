@@ -91,7 +91,7 @@ func (s *Store) Clear() (blocks []int64) {
 		min, data := s.minBlock()
 		path := getPath(s.dir, min)
 
-		Lwarn(fmt.Sprintf("Store.Clear: rm %s release %d]"), path, len(data))
+		Lwarn(fmt.Sprintf("Store.Clear: rm %s release %d]", path, len(data)))
 
 		s.size -= uint64(len(data))
 		delete(s.blocks, min)

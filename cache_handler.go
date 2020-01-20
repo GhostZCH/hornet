@@ -50,12 +50,12 @@ func NewCacheHandler() (h *CacheHandler) {
 	h.heartBeat, err = net.DialUDP("udp", nil, addr)
 	Success(err)
 
-	if GConfig["cache.upstream"].(bool) {
-		h.upstream = new(Upstream)
-		h.upstream.keep = GConfig["cache.upstream.keep"].(int)
-		h.upstream.addr, err = net.ResolveTCPAddr("tcp", GConfig["cache.upstream.addr"].(string))
-		h.upstream.free = make(chan *net.TCPConn, h.upstream.keep)
-	}
+	keep := GConfig["cache.upstream.keep"].(int)
+	h.upstream = &Upstream{
+		keep: keep,
+		free: make(chan *net.TCPConn, keep)}
+	h.upstream.addr, err = net.ResolveTCPAddr("tcp", GConfig["cache.upstream.addr"].(string))
+	Success(err)
 
 	return h
 }
@@ -119,7 +119,6 @@ func (h *CacheHandler) get(trans *Transaction) {
 		start, end = parse_range(rg[2])
 	}
 
-	// TODO
 	total := 0
 	var header []byte = nil
 	for r := start / RANGE_SIZE; end == -1 || r*RANGE_SIZE < end; r++ {
@@ -228,7 +227,6 @@ func (h *CacheHandler) del(trans *Transaction) {
 }
 
 func (h *CacheHandler) pull(isRange bool, trans *Transaction, k Key) {
-	// TODO
 	var u *net.TCPConn
 
 	if len(h.upstream.free) != 0 {

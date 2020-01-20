@@ -11,20 +11,13 @@ common.heartbeat.addr: 224.0.0.100:3300
 
 cache.addr: 127.0.0.1:1100
 cache.heartbeat_ms: 500
-cache.hdd.meta: /home/hdd/hornet/meta
-cache.hdd.path: /home/hdd/hornet/
+cache.hdd.dir: /home/hdd/hornet/
 cache.hdd.cap: 10240000
-cache.hdd.blocksize: 1024000
-cache.ssd.meta: /home/ssd/hornet/meta
-cache.ssd.path: /home/ssd/hornet/
-cache.ssd.cap: 10240000
-cache.ssd.blocksize: 1024000
-cache.mem.meta: /dev/shm/hornet/meta
-cache.mem.path: /dev/shm/hornet/
-cache.mem.cap: 10240000
-cache.mem.blocksize: 1024000
-cache.range.block: 1048576 # 1m
-cache.upstream.addr: 127.0.0.1
+cache.ssd.dir: /home/ssd/hornet/
+cache.ssd.cap: 102400
+cache.mem.meta: /dev/shm/hornet/
+cache.mem.cap: 102400
+cache.upstream.addr: 127.0.0.1:4400
 cache.upstream.keep: 20
 cache.upstream.timeout: 10
 # 必须小写
@@ -37,5 +30,5 @@ cache.http.header.discard:
 
 proxy.fault_ms: 2000
 proxy.addr: 127.0.0.1:2200
-proxy.keepalive.count: 10
+proxy.keepalive.count: 20
 

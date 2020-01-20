@@ -58,16 +58,15 @@ func (ph *ProxyHandler) Handle(trans *Transaction) {
 	Success(err)
 
 	trans.Req.Recv = buf[:n]
-	trans.Req.Parse(false)
+	trans.Req.Parse()
 
 	if trans.Req.Path == nil {
 		// TODO broadcast del
 		return
 	}
-	key := DecodeKey(trans.Req.Path)
 
 	ph.lock.RLock()
-	back := ph.hash.Get(crc32.ChecksumIEEE(key[:])).(*BackEnd)
+	back := ph.hash.Get(crc32.ChecksumIEEE(trans.Req.Path[:])).(*BackEnd)
 	ph.lock.RUnlock()
 
 	var upstream *net.TCPConn
