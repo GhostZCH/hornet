@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"go.uber.org/zap"
 	"hash/crc32"
 	"net"
 	"sync"
@@ -30,7 +31,7 @@ func (be *BackEnd) Hash(i int) uint32 {
 func NewProxyHandler() *ProxyHandler {
 	h := new(ProxyHandler)
 
-	addr, err := net.ResolveUDPAddr("udp", GConfig["common.heartbeat.addr"].(string))
+	addr, err := net.ResolveUDPAddr("udp", Conf["common.heartbeat.addr"].(string))
 	Success(err)
 
 	h.heartBeat, err = net.ListenMulticastUDP("udp", nil, addr)
@@ -42,11 +43,11 @@ func NewProxyHandler() *ProxyHandler {
 }
 
 func (h *ProxyHandler) GetCtx() interface{} {
-	return make([]byte, GConfig["common.http.header.maxlen"].(int))
+	return make([]byte, Conf["common.http.header.maxlen"].(int))
 }
 
 func (h *ProxyHandler) GetListener() string {
-	return GConfig["proxy.addr"].(string)
+	return Conf["proxy.addr"].(string)
 }
 
 func (ph *ProxyHandler) Handle(trans *Transaction) {
@@ -58,16 +59,15 @@ func (ph *ProxyHandler) Handle(trans *Transaction) {
 	Success(err)
 
 	trans.Req.Recv = buf[:n]
-	trans.Req.Parse(false)
+	trans.Req.Parse()
 
 	if trans.Req.Path == nil {
 		// TODO broadcast del
 		return
 	}
-	key := DecodeKey(trans.Req.Path)
 
 	ph.lock.RLock()
-	back := ph.hash.Get(crc32.ChecksumIEEE(key[:])).(*BackEnd)
+	back := ph.hash.Get(crc32.ChecksumIEEE(trans.Req.Path[:])).(*BackEnd)
 	ph.lock.RUnlock()
 
 	var upstream *net.TCPConn
@@ -110,7 +110,7 @@ func (h *ProxyHandler) recv() {
 	for {
 		n, raddr, err := h.heartBeat.ReadFromUDP(data)
 		if err != nil {
-			Lerror(raddr, "ReadFromUDP", err)
+			Log.Error("ReadFromUDP", zap.NamedError("err", err), zap.String("addr", raddr.String()))
 			return
 		}
 
@@ -119,7 +119,8 @@ func (h *ProxyHandler) recv() {
 		h.lock.Lock()
 		if bk, ok := h.backEnds[name]; !ok {
 			if addr, e := net.ResolveTCPAddr("tcp", name); e != nil {
-				Lerror(raddr, "ResolveTCPAddr", name, e)
+				Log.Error("ResolveTCPAddr", zap.NamedError("err", e), zap.String("addr", addr.String()))
+
 			} else {
 				h.backEnds[name] = &BackEnd{name, addr, time.Now(), make(chan *net.TCPConn, 32)}
 			}
@@ -134,7 +135,7 @@ func (h *ProxyHandler) recv() {
 func (h *ProxyHandler) update() {
 	var svrs []Node
 
-	fault := time.Duration(GConfig["proxy.fault_ms"].(int)) * time.Millisecond
+	fault := time.Duration(Conf["proxy.fault_ms"].(int)) * time.Millisecond
 
 	for {
 		time.Sleep(fault)

@@ -3,9 +3,13 @@ package main
 import (
 	"errors"
 	"flag"
+	"go.uber.org/zap"
 	"path/filepath"
 	"runtime/debug"
+	"time"
 )
+
+const VERSION int64 = 1000000
 
 func parseArgs() (string, string) {
 	path := flag.String("conf", "hornet.yaml", "conf file path")
@@ -20,13 +24,13 @@ func main() {
 	dir, name := filepath.Split(path)
 	LoadConf(path, dir+"local_"+name)
 	InitLog()
-
-	Lwarn(GConfig)
+	Log.Warn("Conf", zap.Any("conf", Conf))
 
 	defer func() {
-		if err := recover(); err != nil {
-			Lerror(err)
-			Lwarn(string(debug.Stack()))
+		if err := recover().(error); err != nil {
+			Log.Warn(string(debug.Stack()))
+			Log.Error("main", zap.NamedError("err", err))
+			time.Sleep(time.Duration(1) * time.Second)
 		}
 	}()
 

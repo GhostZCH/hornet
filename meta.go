@@ -1,156 +1,167 @@
 package main
 
 import (
-	"bytes"
-	"encoding/binary"
+	"crypto/md5"
+	"encoding/gob"
+	"errors"
+	"fmt"
+	"go.uber.org/zap"
+	"os"
 	"sync"
 )
 
-type HKey [KEY_HASH_LEN]byte
+const META_VERSION int64 = VERSION - VERSION%1000000
+const RAW_LIMIT int = 256
 
-type Range struct {
-	BlockSize  uint32 // range block size
-	BlockIndex uint32 // range block index
-}
+type Hash [md5.Size]byte
 
 type Key struct {
-	Hash  HKey
-	Range Range
-}
-
-type ItemInfo struct {
-	ID         Key
-	Block      int64
-	Off        int64
-	Expire     int64
-	BodyLen    int64
-	HeadLen    int64
-	EtagHash   uint32
-	ExpireHash uint32
-	Grp        HKey
-	BitMap     uint32
-	Tag        uint32
-	RawKeyLen  uint32
-	RawKey     [RAW_KEY_LIMIT]byte
+	ID    Hash
+	Range uint32 // index of range block
 }
 
 type Item struct {
-	Putting bool
-	Info    *ItemInfo
+	Key      Key
+	Block    int64
+	Off      int64
+	Expire   int64
+	HeadLen  uint64
+	BodyLen  uint64
+	TotalLen uint64
+	Tag      int64
+	TypeCRC  uint64 //crc64
+	EtagCRC  uint64 //crc64
+	GroupCRC uint64 //crc64
+	RawKey   []byte
 }
 
-type bucket struct {
-	items  map[Key]*Item
-	ranges map[HKey][]Range
-	lock   sync.RWMutex
+type Bucket struct {
+	lock    sync.RWMutex
+	putting map[Key]*Item
+	Items   map[Key]*Item
+	// Range   map[Hash]uint32 // TODO: delete ranges faster
+	// DirTree // TODO: suport delete by dir
 }
 
 type Meta struct {
-	buckets [BUCKET_LIMIT]bucket
+	path    string
+	Buckets [BucketLimit]Bucket
+	Blocks  []int64
 }
 
-func NewMeta() *Meta {
-	m := new(Meta)
-	for i := 0; i < BUCKET_LIMIT; i++ {
-		m.buckets[i].items = make(map[Key]*Item)
-		m.buckets[i].ranges = make(map[HKey][]Range)
+func NewMeta(dir string) *Meta {
+	m := &Meta{path: fmt.Sprintf("%s/%d-%d.meta", dir, META_VERSION, RangeSize)}
+	for i := 0; i < BucketLimit; i++ {
+		m.Buckets[i].Items = make(map[Key]*Item)
+		m.Buckets[i].putting = make(map[Key]*Item)
 	}
+
+	f, err := os.Open(m.path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			panic(err)
+		}
+		Log.Warn("meta file found", zap.String("path", m.path))
+		return m
+	}
+	defer f.Close()
+
+	Success(gob.NewDecoder(f).Decode(m))
+	os.Remove(m.path)
+
 	return m
 }
 
-func (m *Meta) AddAll(infos []ItemInfo) {
-	for i := 0; i < BUCKET_LIMIT; i++ {
-		b := &m.buckets[i]
-		b.lock.Lock()
-		defer b.lock.Unlock()
-	}
-
-	for _, i := range infos {
-		b := m.getBucket(i.ID)
-		b.items[i.ID] = &Item{false, &i}
-
-		if i.ID.Range.BlockSize != 0 {
-			if _, ok := b.ranges[i.ID.Hash]; !ok {
-				b.ranges[i.ID.Hash] = make([]Range, 1)
-			}
-			b.ranges[i.ID.Hash] = append(b.ranges[i.ID.Hash], i.ID.Range)
-		}
-	}
+func (m *Meta) GetBlocks() (blocks []int64) {
+	return m.Blocks
 }
 
-func (m *Meta) DumpAll(buf *bytes.Buffer) int {
-	n := 0
-	for i := 0; i < BUCKET_LIMIT; i++ {
-		b := &m.buckets[i]
-		b.lock.Lock()
-		defer b.lock.Unlock()
+func (m *Meta) Dump(blocks []int64) {
+	m.Blocks = blocks
 
-		n += len(b.items)
-		for _, b := range b.items {
-			Success(binary.Write(buf, binary.LittleEndian, *b.Info))
-		}
-	}
+	tmp := m.path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_RDWR|os.O_CREATE, 0600)
+	Success(err)
 
-	return n
+	Success(gob.NewEncoder(f).Encode(m))
+	f.Close()
+
+	Success(os.Rename(tmp, m.path))
 }
 
-func (m *Meta) Get(id Key) *Item {
-	b := m.getBucket(id)
+func (m *Meta) Get(k Key) (item *Item) {
+	b := m.getBucket(k.ID)
 	b.lock.RLock()
 	defer b.lock.RUnlock()
-	if item, ok := b.items[id]; ok {
-		return item
+
+	if i, ok := b.Items[k]; ok {
+		return i
 	}
+
 	return nil
 }
 
-func (m *Meta) Add(item *Item) {
-	id := item.Info.ID
-	b := m.getBucket(id)
+func (m *Meta) Alloc(item *Item) bool {
+	b := m.getBucket(item.Key.ID)
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	b.items[id] = item
+	if _, ok := b.Items[item.Key]; ok {
+		return false
+	}
 
-	if id.Range.BlockSize != 0 {
-		if _, ok := b.ranges[id.Hash]; !ok {
-			b.ranges[id.Hash] = make([]Range, 1)
-		}
-		b.ranges[id.Hash] = append(b.ranges[id.Hash], id.Range)
+	if _, ok := b.putting[item.Key]; ok {
+		return false
+	}
+
+	b.putting[item.Key] = item
+	return true
+}
+
+func (m *Meta) Add(k Key) {
+	b := m.getBucket(k.ID)
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	if _, ok := b.putting[k]; !ok {
+		panic(errors.New("NO_PUTTING_ITEMS"))
+	}
+
+	if _, ok := b.Items[k]; !ok {
+		b.Items[k] = b.putting[k]
+	}
+	delete(b.putting, k)
+
+	if len(b.Items[k].RawKey) > RAW_LIMIT {
+		b.Items[k].RawKey = b.Items[k].RawKey[:RAW_LIMIT]
 	}
 }
 
-func (m *Meta) Delete(id Key) {
-	b := m.getBucket(id)
-	b.lock.RLock()
-	defer b.lock.RUnlock()
-	delete(b.items, id)
-
-	if id.Range.BlockSize == 0 {
-		if r, ok := b.ranges[id.Hash]; ok {
-			for _, rg := range r {
-				delete(b.items, Key{id.Hash, rg})
-			}
-		}
-	}
-}
-
-func (m *Meta) DeleteBatch(match func(*Item) bool) {
-	for i := 0; i < BUCKET_LIMIT; i++ {
+func (m *Meta) DeleteBatch(match func(*Item) bool) uint {
+	n := uint(0)
+	for i := 0; i < BucketLimit; i++ {
 		func() {
-			b := &m.buckets[i]
+			b := &m.Buckets[i]
 			b.lock.Lock()
 			defer b.lock.Unlock()
-			for id, item := range b.items {
+			for id, item := range b.Items {
 				if match(item) {
-					delete(b.items, id)
+					delete(b.Items, id)
+					n++
 				}
 			}
 		}()
 	}
+	return n
 }
 
-func (m *Meta) getBucket(id Key) *bucket {
-	idx := int(id.Hash[0]) % BUCKET_LIMIT
-	return &m.buckets[idx]
+func (m *Meta) DeletePut(k Key) {
+	b := m.getBucket(k.ID)
+	b.lock.Lock()
+	defer b.lock.Unlock()
+	delete(b.putting, k)
+}
+
+func (m *Meta) getBucket(id Hash) *Bucket {
+	return &m.Buckets[id[0]]
 }
