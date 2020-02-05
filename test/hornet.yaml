@@ -9,9 +9,9 @@ common.http.header.maxlen: 4096
 common.http.body.bufsize: 65536
 common.heartbeat.addr: 224.0.0.100:3300
 
-cache.hdd.dir: /tmp/home/hdd/hornet/
-cache.hdd.cap: 102400
-cache.ssd.dir: /tmp/home/ssd/hornet/
-cache.ssd.cap: 102400
-cache.mem.dir: /tmp/home/dev/shm/hornet/
-cache.mem.cap: 102400
+cache.0.dir: /tmp/home/dev/shm/hornet/
+cache.0.cap: 102400
+cache.1.dir: /tmp/home/ssd/hornet/
+cache.1.cap: 102400
+cache.2.dir: /tmp/home/hdd/hornet/
+cache.2.cap: 102400

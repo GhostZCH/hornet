@@ -2,10 +2,10 @@ package main
 
 import (
 	"crypto/md5"
-	"encoding/binary"
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"go.uber.org/zap"
 	"os"
 	"sync"
 )
@@ -45,13 +45,13 @@ type Bucket struct {
 
 type Meta struct {
 	path    string
-	Buckets [BUCKET_LIMIT]Bucket
+	Buckets [BucketLimit]Bucket
 	Blocks  []int64
 }
 
 func NewMeta(dir string) *Meta {
-	m := &Meta{path: fmt.Sprintf("%s/%d-%d.meta", dir, META_VERSION, RANGE_SIZE)}
-	for i := 0; i < BUCKET_LIMIT; i++ {
+	m := &Meta{path: fmt.Sprintf("%s/%d-%d.meta", dir, META_VERSION, RangeSize)}
+	for i := 0; i < BucketLimit; i++ {
 		m.Buckets[i].Items = make(map[Key]*Item)
 		m.Buckets[i].putting = make(map[Key]*Item)
 	}
@@ -61,7 +61,7 @@ func NewMeta(dir string) *Meta {
 		if !os.IsNotExist(err) {
 			panic(err)
 		}
-		Lwarn(m.path, " no meta file found")
+		Log.Warn("meta file found", zap.String("path", m.path))
 		return m
 	}
 	defer f.Close()
@@ -139,7 +139,7 @@ func (m *Meta) Add(k Key) {
 
 func (m *Meta) DeleteBatch(match func(*Item) bool) uint {
 	n := uint(0)
-	for i := 0; i < BUCKET_LIMIT; i++ {
+	for i := 0; i < BucketLimit; i++ {
 		func() {
 			b := &m.Buckets[i]
 			b.lock.Lock()
@@ -163,6 +163,5 @@ func (m *Meta) DeletePut(k Key) {
 }
 
 func (m *Meta) getBucket(id Hash) *Bucket {
-	k := binary.BigEndian.Uint32(id[:4]) % uint32(BUCKET_LIMIT)
-	return &m.Buckets[k]
+	return &m.Buckets[id[0]]
 }

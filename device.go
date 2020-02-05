@@ -1,20 +1,25 @@
 package main
 
-const BUCKET_LIMIT int = 1024
+import (
+	"go.uber.org/zap"
+)
+
+const BucketLimit int = 256
 
 type Device struct {
+	level int
 	meta  *Meta
 	store *Store
 }
 
-func NewDevice(dir string, cap int) *Device {
+func NewDevice(dir string, level int, cap int) *Device {
 	if cap == 0 || dir == "" {
 		return nil
 	}
 
 	m := NewMeta(dir)
 	s := NewStore(dir, uint64(cap), m.GetBlocks())
-	d := &Device{store: s, meta: m}
+	d := &Device{store: s, meta: m, level: level}
 	d.clear()
 
 	return d
@@ -50,7 +55,7 @@ func (d *Device) clear() {
 			}
 		}
 		if !found {
-			Lwarn("delete items in unload block ", b)
+			Log.Warn("delete items ", zap.Int64("block", b))
 			d.meta.DeleteBatch(func(item *Item) bool { return item.Block == b })
 		}
 	}

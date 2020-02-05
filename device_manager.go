@@ -2,29 +2,41 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"go.uber.org/zap"
 )
 
-const RANGE_SIZE int64 = 4 * 1024 * 1024
+const RangeSize int64 = 4 * 1024 * 1024
 
-var DEVICES [3]string = [3]string{"mem", "ssd", "hdd"}
+const DeviceLimit int = 8
 
 type DeviceManager struct {
-	devices [len(DEVICES)]*Device
+	devices [DeviceLimit]*Device
+	lowest  int
 }
 
 func NewDeviceManager() *DeviceManager {
-	dm := new(DeviceManager)
+	dm := &DeviceManager{lowest: DeviceLimit}
 
-	err := errors.New("no devices")
-	for i, name := range DEVICES {
-		dir := GConfig["cache."+name+".dir"].(string)
-		cap := GConfig["cache."+name+".cap"].(int)
-		if dm.devices[i] = NewDevice(dir, cap); dm.devices[i] != nil {
-			err = nil
+	for lv, _ := range dm.devices {
+		dir, ok1 := Conf[fmt.Sprintf("cache.%d.dir", lv)]
+		cap, ok2 := Conf[fmt.Sprintf("cache.%d.cap", lv)]
+
+		if ok1 && ok2 {
+			if dm.devices[lv] = NewDevice(dir.(string), lv, cap.(int)); dm.devices[lv] != nil {
+				dm.lowest = lv
+			}
+			Log.Warn("load device",
+				zap.Int("lv", lv),
+				zap.String("dir", dir.(string)),
+				zap.Int("cap", cap.(int)),
+				zap.Bool("re", dm.devices[lv] != nil))
 		}
 	}
 
-	Success(err)
+	if dm.lowest == DeviceLimit {
+		panic(errors.New("no devices"))
+	}
 
 	return dm
 }
@@ -38,7 +50,7 @@ func (dm *DeviceManager) Close() {
 }
 
 func (dm *DeviceManager) Alloc(item *Item) ([]byte, int) {
-	for i := len(DEVICES) - 1; i > 0; i-- {
+	for i := DeviceLimit - 1; i > 0; i-- {
 		if dm.devices[i] != nil {
 			return dm.devices[i].Alloc(item), i
 		}
@@ -50,7 +62,7 @@ func (dm *DeviceManager) Add(dev int, k Key) {
 	dm.devices[dev].Add(k)
 }
 
-func (dm *DeviceManager) Get(k Key) (*Item, []byte, *string) {
+func (dm *DeviceManager) Get(k Key) (*Item, []byte, int) {
 	for i, d := range dm.devices {
 		if item, data := d.Get(k); item != nil {
 			for j := i - 1; j >= 0; j-- {
@@ -63,10 +75,10 @@ func (dm *DeviceManager) Get(k Key) (*Item, []byte, *string) {
 				}
 			}
 
-			return item, data, &DEVICES[i]
+			return item, data, i
 		}
 	}
-	return nil, nil, nil
+	return nil, nil, DeviceLimit
 }
 
 func (dm *DeviceManager) Del(match func(*Item) bool) uint {

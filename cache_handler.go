@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"errors"
 	"fmt"
+	"go.uber.org/zap"
 	"hash/crc64"
 	"net"
 	"regexp"
@@ -14,8 +15,10 @@ import (
 	"time"
 )
 
-var REQ_RANGE_REG = regexp.MustCompile("bytes=(\\d+)?-(\\d+)?")
-var RSP_RANGE_REG = regexp.MustCompile("(\\d+)-(\\d+)/(\\d+)")
+var (
+	RegRangReg = regexp.MustCompile("bytes=(\\d+)?-(\\d+)?")
+	RspRangReg = regexp.MustCompile("(\\d+)-(\\d+)/(\\d+)")
+)
 
 type LockKey struct {
 	id      Key
@@ -39,42 +42,40 @@ type CacheHandler struct {
 }
 
 func NewCacheHandler() (h *CacheHandler) {
-	var err error
-
-	addr, err := net.ResolveUDPAddr("udp", GConfig["common.heartbeat.addr"].(string))
+	addr, err := net.ResolveUDPAddr("udp", Conf["common.heartbeat.addr"].(string))
 	Success(err)
 
 	h = new(CacheHandler)
-	h.name = GConfig["common.name"].(string)
+	h.name = Conf["common.name"].(string)
 	h.devices = NewDeviceManager()
 	h.heartBeat, err = net.DialUDP("udp", nil, addr)
 	Success(err)
 
-	keep := GConfig["cache.upstream.keep"].(int)
+	keep := Conf["cache.upstream.keep"].(int)
 	h.upstream = &Upstream{
 		keep: keep,
 		free: make(chan *net.TCPConn, keep)}
-	h.upstream.addr, err = net.ResolveTCPAddr("tcp", GConfig["cache.upstream.addr"].(string))
+	h.upstream.addr, err = net.ResolveTCPAddr("tcp", Conf["cache.upstream.addr"].(string))
 	Success(err)
 
 	return h
 }
 
 func (h *CacheHandler) GetCtx() interface{} {
-	return make([]byte, GConfig["common.http.header.maxlen"].(int))
+	return make([]byte, Conf["common.http.header.maxlen"].(int))
 }
 
 func (h *CacheHandler) GetListener() string {
-	return GConfig["cache.addr"].(string)
+	return Conf["cache.addr"].(string)
 }
 
 func (h *CacheHandler) Start() {
 	go func() {
-		msg := []byte(GConfig["cache.addr"].(string))
-		span := time.Duration(GConfig["cache.heartbeat_ms"].(int)) * time.Millisecond
+		msg := []byte(Conf["cache.addr"].(string))
+		span := time.Duration(Conf["cache.heartbeat_ms"].(int)) * time.Millisecond
 		for {
 			if _, e := h.heartBeat.Write(msg); e != nil {
-				Lerror("heartBeat.Write", e)
+				Log.Warn("heartBeat.Write", zap.NamedError("err", e))
 				break
 			}
 			time.Sleep(span)
@@ -83,7 +84,7 @@ func (h *CacheHandler) Start() {
 }
 
 func (h *CacheHandler) Close() {
-	Lwarn(h, "close")
+	Log.Warn("close", zap.String("handler", "cache"))
 	h.heartBeat.Close()
 	h.devices.Close()
 }
@@ -121,13 +122,13 @@ func (h *CacheHandler) get(trans *Transaction) {
 
 	total := 0
 	var header []byte = nil
-	for r := start / RANGE_SIZE; end == -1 || r*RANGE_SIZE < end; r++ {
+	for r := start / RangeSize; end == -1 || r*RangeSize < end; r++ {
 		k := Key{ID: id, Range: uint32(r)}
 		item, data, cache := h.devices.Get(k)
 		if item == nil {
 			h.pull(isRange, trans, k)
 			item, data, cache = h.devices.Get(k)
-			*cache = "miss"
+			cache = DeviceLimit
 		}
 
 		if item == nil {
@@ -145,13 +146,13 @@ func (h *CacheHandler) get(trans *Transaction) {
 			end = int64(item.TotalLen)
 		}
 
-		trans.SvrMsg += fmt.Sprintf("%s:%s", h.name, *cache)
-		via := fmt.Sprintf("X-Via-Cache: %s %s\r\n", h.name, *cache)
+		trans.SvrMsg += fmt.Sprintf("%s:%d", h.name, cache)
+		via := fmt.Sprintf("X-Via-Cache: %s %d\r\n", h.name, cache)
 		trans.Rsp.Headers = append(trans.Rsp.Headers, []byte(via))
 
-		s, e := start-r*int64(RANGE_SIZE), end-r*int64(RANGE_SIZE)
-		if e > RANGE_SIZE {
-			e = RANGE_SIZE
+		s, e := start-r*int64(RangeSize), end-r*int64(RangeSize)
+		if e > RangeSize {
+			e = RangeSize
 		}
 		if s < 0 {
 			s = 0
@@ -242,13 +243,13 @@ func (h *CacheHandler) pull(isRange bool, trans *Transaction, k Key) {
 		req.Headers = append(req.Headers, v[0])
 	}
 
-	s, e := int64(k.Range)*RANGE_SIZE, int64(k.Range)*RANGE_SIZE-1
+	s, e := int64(k.Range)*RangeSize, int64(k.Range)*RangeSize-1
 	r := fmt.Sprintf("Range: bytes=%d-%d", s, e)
 	req.Headers = append(req.Headers, []byte(r))
 
 	req.Send(u)
 
-	recv := make([]byte, GConfig["common.http.header.maxlen"].(int))
+	recv := make([]byte, Conf["common.http.header.maxlen"].(int))
 	n, err := u.Read(recv)
 	Success(err)
 
@@ -279,7 +280,7 @@ func (h *CacheHandler) pull(isRange bool, trans *Transaction, k Key) {
 func parse_range(r []byte) (start, end int64) {
 	start, end = 0, -1
 
-	m := REQ_RANGE_REG.FindSubmatch(r)
+	m := RegRangReg.FindSubmatch(r)
 	if len(m) != 3 || (len(m[1]) == 0 && len(m[2]) == 0) {
 		panic(errors.New("RANGE_ERROR"))
 	}
@@ -331,7 +332,7 @@ func generateItem(isRange bool, k Key, path []byte, headers map[string][][]byte)
 		if h, ok := headers["content-range"]; !ok {
 			panic(errors.New("CONTENT_RANGE_NOT_SET"))
 		} else {
-			if re := RSP_RANGE_REG.FindSubmatch(h[2]); len(re) != 4 {
+			if re := RspRangReg.FindSubmatch(h[2]); len(re) != 4 {
 				panic(errors.New("CONTENT_RANGE_WRONG"))
 			} else {
 				if tmp, err := strconv.ParseInt(string(re[3]), 10, 64); err != nil {
@@ -364,7 +365,7 @@ func generateItem(isRange bool, k Key, path []byte, headers map[string][][]byte)
 		}
 	}
 
-	for _, h := range GConfig["cache.http.header.discard"].([]interface{}) {
+	for _, h := range Conf["cache.http.header.discard"].([]interface{}) {
 		delete(headers, h.(string))
 	}
 

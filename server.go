@@ -1,6 +1,7 @@
 package main
 
 import (
+	"go.uber.org/zap"
 	"io"
 	"net"
 	"sync"
@@ -36,14 +37,14 @@ func (svr *Server) Start() {
 
 	svr.listener = ls
 
-	Lwarn("server start handle requests")
+	Log.Warn("server start handle requests")
 	svr.handler.Start()
 
 	wg := new(sync.WaitGroup)
 	for svr.run {
 		conn, err := ls.AcceptTCP()
 		if err != nil {
-			Lerror(err)
+			Log.Error("AcceptTCP", zap.NamedError("err", err))
 			break
 		}
 
@@ -54,7 +55,7 @@ func (svr *Server) Start() {
 }
 
 func (svr *Server) Stop() {
-	Lwarn("server stoping ...")
+	Log.Warn("server stoping ...")
 	svr.run = false
 	svr.listener.Close()
 }
@@ -67,14 +68,14 @@ func (svr *Server) handleTrans(trans *Transaction) (err error) {
 
 		if err != io.EOF {
 			trans.Err = err
-			Laccess(trans)
+			Access.Info(trans.String())
 			if err == nil {
-				SetTimeOut(trans.Conn, GConfig["common.sock.idle.timeout"].(int))
+				SetTimeOut(trans.Conn, Conf["common.sock.idle.timeout"].(int))
 			}
 		}
 	}()
 
-	SetTimeOut(trans.Conn, GConfig["common.sock.req.timeout"].(int))
+	SetTimeOut(trans.Conn, Conf["common.sock.req.timeout"].(int))
 	svr.handler.Handle(trans)
 	return err
 }
@@ -83,8 +84,8 @@ func (svr *Server) handleConn(conn *net.TCPConn, wg *sync.WaitGroup) {
 	wg.Add(1)
 
 	defer func() {
-		if err := recover(); err != nil {
-			Lwarn(err)
+		if err := recover().(error); err != nil {
+			Log.Warn("handleConn", zap.NamedError("err", err))
 		}
 	}()
 

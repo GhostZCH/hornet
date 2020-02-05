@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
+	"go.uber.org/zap"
 	"os"
 	"sync"
 	"syscall"
 	"time"
 )
 
-const BLOCK_COUNT uint64 = 512
+const BLOCK_COUNT uint64 = 1024
 
 type Store struct {
 	dir      string
@@ -34,10 +35,10 @@ func NewStore(dir string, cap uint64, blocks []int64) *Store {
 	for _, b := range blocks {
 		path := getPath(dir, b)
 		if info, err := os.Stat(path); err != nil {
-			Lwarn(fmt.Sprintf("stat %s error [%v]", path, err))
+			Log.Warn("os.Stat", zap.String("path", path), zap.NamedError("err", err))
 		} else {
 			if data, err := mmap(path, int(info.Size())); err != nil {
-				Lwarn(fmt.Sprintf("mmap %s error [%v]", path, err))
+				Log.Warn("mmap", zap.String("path", path), zap.NamedError("err", err))
 			} else {
 				s.blocks[b] = data
 			}
@@ -91,7 +92,7 @@ func (s *Store) Clear() (blocks []int64) {
 		min, data := s.minBlock()
 		path := getPath(s.dir, min)
 
-		Lwarn(fmt.Sprintf("Store.Clear: rm %s release %d]", path, len(data)))
+		Log.Warn("Store.Clear", zap.String("rm", path), zap.Int("clear", len(data)))
 
 		s.size -= uint64(len(data))
 		delete(s.blocks, min)
@@ -129,13 +130,13 @@ func (s *Store) addBlock(size uint64) {
 
 	now := time.Now().UnixNano()
 	name := getPath(s.dir, now)
-	if data, err := mmap(name, int(size)); err != nil {
+	if data, err := mmap(name, int(size)); err == nil {
 		s.blocks[now] = data
 		s.curBlock = now
 		s.curOff = 0
 		s.size += size
 	} else {
-		Lwarn("add block failed ", name)
+		Log.Warn("add block failed", zap.String("name", name), zap.NamedError("err", err))
 	}
 }
 
