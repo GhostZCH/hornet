@@ -5,7 +5,6 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
-	"go.uber.org/zap"
 	"os"
 	"sync"
 )
@@ -61,7 +60,6 @@ func NewMeta(dir string) *Meta {
 		if !os.IsNotExist(err) {
 			panic(err)
 		}
-		Log.Warn("meta file found", zap.String("path", m.path))
 		return m
 	}
 	defer f.Close()
