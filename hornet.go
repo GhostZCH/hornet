@@ -1,15 +1,11 @@
 package main
 
 import (
-	"fmt"
-	"hornet/common"
+	"hornet/store"
 	"math/rand"
 	"os"
-	"strings"
 	"syscall"
 	"time"
-
-	"github.com/valyala/fasthttp"
 )
 
 func mmap(path string, size int) (data []byte, err error) {
@@ -32,45 +28,43 @@ func mmap(path string, size int) (data []byte, err error) {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	// store.NewSQLLite("test/meta")
-	path := "/dev/shm/random_file"
-	info, err := os.Stat(path)
-	if err != nil {
-		panic(err)
-	}
+	store.NewSQLLite("test/meta/test.db")
+	// path := "/dev/shm/random_file"
+	// path := "/home/ghost/code/hornet/test/data/random_file.data"
 
-	data, err := mmap(path, int(info.Size()))
-	if err != nil {
-		panic(err)
-	}
+	// info, err := os.Stat(path)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	logger := common.NewHourlyLogger("test/log/")
+	// data, err := mmap(path, int(info.Size()))
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	// 创建 fasthttp 请求处理函数
-	handler := func(ctx *fasthttp.RequestCtx) {
-		switch string(ctx.Path()) {
-		case "/":
-			fmt.Fprintf(ctx, "Welcome to my website!")
-		case "/ping":
-			fmt.Fprintf(ctx, strings.Repeat("x", 4096))
-		case "/file":
-			ctx.SetContentType("text/plain")
-			ctx.Response.Header.Set("Content-Length", "4096")
-			off := 2000
-			if rand.Intn(10) < 100 {
-				// 90% in mem
-				off = rand.Intn(int(info.Size() - 4096))
-			}
-			ctx.Write(data[off : off+4096])
-		default:
-			ctx.Error("Unsupported path", fasthttp.StatusBadRequest)
-		}
-		logger.WriteLog(&common.LogData{Url: ctx.Path()})
+	// logger := common.NewHourlyLogger("test/log/")
 
-	}
+	// // 创建 fasthttp 请求处理函数
+	// handler := func(ctx *fasthttp.RequestCtx) {
+	// 	switch string(ctx.Path()) {
+	// 	case "/":
+	// 		fmt.Fprintf(ctx, "Welcome to my website!")
+	// 	case "/ping":
+	// 		fmt.Fprintf(ctx, strings.Repeat("x", 4096))
+	// 	case "/file":
+	// 		ctx.SetContentType("text/plain")
+	// 		ctx.Response.Header.Set("Content-Length", "4096")
+	// 		off := rand.Intn(int(info.Size() - 4096))
+	// 		ctx.Write(data[off : off+4096])
+	// 	default:
+	// 		ctx.Error("Unsupported path", fasthttp.StatusBadRequest)
+	// 	}
+	// 	logger.WriteLog(&common.LogData{Url: ctx.Path()})
 
-	// 启动 fasthttp 服务器
-	if err := fasthttp.ListenAndServe(":8080", handler); err != nil {
-		fmt.Printf("Error when starting server: %s\n", err.Error())
-	}
+	// }
+
+	// // 启动 fasthttp 服务器
+	// if err := fasthttp.ListenAndServe(":8080", handler); err != nil {
+	// 	fmt.Printf("Error when starting server: %s\n", err.Error())
+	// }
 }
