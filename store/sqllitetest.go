@@ -20,7 +20,7 @@ type ItemInfo struct {
 
 func NewSQLLite(path string) {
 	// 打开数据库
-	db, err := sql.Open("sqlite3", "file:"+path+"cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:"+path+"?cache=shared&mode=rwc")
 	if err != nil {
 		panic(err)
 	}
