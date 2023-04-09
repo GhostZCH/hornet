@@ -10,12 +10,12 @@ import (
 )
 
 type ItemInfo struct {
-	ID1      int64
-	ID2      int64
-	ID       []byte // 16-byte ID字段
-	Filename uint64 // 文件名的64位整数表示
-	Offset   int64  // 文件中的偏移量
-	Size     int64  // 数据的长度
+	ID1    int64
+	ID2    int64
+	ID     []byte // 16-byte ID字段
+	block  int64  // 文件名的64位整数表示
+	Offset int64  // 文件中的偏移量
+	Size   int64  // 数据的长度
 }
 
 func NewSQLLite(path string) {
@@ -31,7 +31,8 @@ func NewSQLLite(path string) {
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS item_info (
 		id1 BIGINT,
 		id2 BIGINT,
-		filename BIGINT,
+		host TEXT(128),
+		block BIGINT,
 		offset BIGINT,
 		size BIGINT,
 		url TEXT(256),
@@ -53,20 +54,21 @@ func NewSQLLite(path string) {
 	}
 
 	// 执行插入操作
-	stmt, err := tx.Prepare("INSERT INTO item_info(id1, id2, filename, offset, size, url) VALUES (?, ?, ?, ?, ?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO item_info(id1, id2, host, block, offset, size, url) VALUES (?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer stmt.Close()
 
-	n := 100000
+	n := 1000000
 	for i := 0; i < n; i++ {
 		filename := int64(i)
 		offset := int64(i * 10)
 		size := int64(1024)
-		url := fmt.Sprintf("%d_https//www.example.com/products/item1www.example.com/products/item1www.example.com/products/item1?id=%020d", i/10, i)
+		host := fmt.Sprintf("%016d.aaaaaaaa.com.cn.ok", i%10)
+		url := fmt.Sprintf("%d_https//www.example.com/products/item1www.example.com/products/item1www.example.com/products/item1?id=%020d", i%100, i)
 
-		_, err := stmt.Exec(int64(i), int64(99999999-i), filename, offset, size, url)
+		_, err := stmt.Exec(int64(i), int64(99999999-i), host, filename, offset, size, url)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -93,13 +95,17 @@ func NewSQLLite(path string) {
 	}
 	fmt.Printf("Query by id %d times takes %s\n", n, time.Since(start))
 
-	// start = time.Now()
-	// db.Exec(`DELETE FROM item_info WHERE url LIKE  '3_%'`)
-	// fmt.Printf("delte 10%% of %d items takes %s\n", n, time.Since(start))
-
 	start = time.Now()
 	db.Exec(`DELETE FROM item_info WHERE url LIKE  '3_%'`)
-	fmt.Printf("delte 10%% of %d items takes %s\n", n, time.Since(start))
+	fmt.Printf("1 delte 10%% of %d items takes %s\n", n, time.Since(start))
+
+	// start = time.Now()
+	// db.Exec(`DELETE FROM item_info WHERE url LIKE'3_%'`)
+	// fmt.Printf("2 delte 10%% of %d items takes %s\n", n, time.Since(start))
+
+	start = time.Now()
+	db.Exec(`DELETE FROM item_info WHERE host == '0000000000000003.aaaaaaaa.com.cn.ok'`)
+	fmt.Printf("3 delte 10%% of %d items takes %s\n", n, time.Since(start))
 
 	count := 0
 	db.QueryRow("SELECT COUNT(*) FROM item_info ").Scan(&count)
