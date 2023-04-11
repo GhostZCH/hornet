@@ -2,34 +2,20 @@ common:
   name: Hornet
 
 log:
-  path: test/log/  # check dir exist
+  path: test/log/run  # check dir exist
   level: warn  # warn/info/error
+  access: test/log/access
 
 cache:
   addr: 127.0.0.1:9100
   admin: 127.0.0.1:9200
-  bucket: 8 
   device:
     - name: mem
       dir: /dev/shm/hornet/
-      block:
-        count: 8
-        size : 128m
+      size: 512M
     - name: ssd
       dir: /home/ssd/hornet/
-      block:
-        count: 16
-        size : 1G
     - name: hdd
       dir: /home/hdd/hornet/
-      block:
-        count: 16
-        size : 4G
+      size: 1T
 
-
-proxy:
-  addr: 127.0.0.1:8080
-  redis:
-    addr: localhost:6379
-    pass: "xxxx"
-    db: 0 
