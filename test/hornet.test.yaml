@@ -1,0 +1,22 @@
+common:
+  name: Hornet
+
+log:
+  path: test/log/run  # check dir exist
+  level: warn  # warn/info/error
+  access: test/log/access
+
+cache:
+  addr: 127.0.0.1:9100
+  admin: 127.0.0.1:9200
+  device:
+    - name: mem
+      dir: /dev/shm/
+      size: 64M
+    - name: ssd
+      dir: test/data/ssd/
+      size: 512M
+    - name: hdd
+      dir: test/data/hdd/
+      size: 1G
+
