@@ -1,6 +1,8 @@
 package http
 
 import (
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"hornet/common"
@@ -34,16 +36,22 @@ func NewCacheServer(conf *common.Config, store *store.Store, logger *common.Hour
 
 func (svr *CacheServer) cacheHandler(ctx *fasthttp.RequestCtx) {
 	key := append(ctx.URI().Host(), ctx.URI().Path()...)
-	buf := svr.store.Get(key)
+	k := store.GetKey(key)
+	buf, headerSize := svr.store.Get(&k)
 	if buf == nil {
 		// upstream
+		// resp.Header.VisitAll(func(key, value []byte) {
+		// 	fmt.Printf("%s: %s\n", key, value)
+		// })
 	}
 
-	ctx.SetContentType("text/plain")
-	// cache headers
-	// upstream
-	ctx.Response.Header.Set("Content-Length", fmt.Sprint(len(buf)))
-	ctx.Write(buf)
+	dec := gob.NewDecoder(bytes.NewReader(buf[:headerSize]))
+	var headers map[string]string
+	common.Success(dec.Decode(&headers))
+	for k, v := range headers {
+		ctx.Response.Header.Add(k, v)
+	}
+	ctx.Write(buf[headerSize:])
 
 	svr.logger.WriteLog(&common.LogData{Url: ctx.RequestURI()})
 }

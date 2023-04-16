@@ -14,24 +14,37 @@ func NewStore(conf *common.CacheConfig) *Store {
 	return &Store{devices: devices}
 }
 
-func (s *Store) Get(srcKey []byte) []byte {
-	k := GetKey(srcKey)
+func (s *Store) Get(k *Key) (buf []byte, headerLen int) {
 	for i, d := range s.devices {
-		buf := d.Get(k)
-		if d.Get(k) != nil {
-			if i > 0 {
-				s.devices[i-1].Put(k, buf)
-			}
-			return buf
+		buffer, item, isHot := d.Get(k)
+		if isHot && i > 0 {
+			newItem := &Item{
+				Key:        item.Key,
+				HeaderLen:  item.HeaderLen,
+				BodyLen:    item.BodyLen,
+				UserGroup:  item.UserGroup,
+				User:       item.User,
+				RootDomain: item.RootDomain,
+				Domain:     item.Domain,
+				SrcGroup:   item.SrcGroup,
+				Expires:    item.Expires,
+				Tags:       item.Tags}
+			newItem.Path = make([]byte, len(item.Path))
+			copy(newItem.Path, item.Path)
+
+			s.devices[i-1].Put(newItem, buf)
+		}
+		if buffer != nil {
+			return buffer, headerLen
 		}
 	}
-	return nil
+	return nil, 0
 }
 
 // TODO : alloc implate in upstream model, simply code
 
-func (s *Store) Put(srcKey []byte, buf []byte) {
-	last := len(s.devices) - 1
-	k := GetKey(srcKey)
-	s.devices[last].Put(k, buf)
+func (s *Store) Put(item *Item, buf []byte) {
+	// k := GetKey(srcKey)
+	dev := s.devices[len(s.devices)-1]
+	dev.Put(item, buf)
 }

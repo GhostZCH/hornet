@@ -1,4 +1,4 @@
-package store
+package preftests
 
 import (
 	"database/sql"

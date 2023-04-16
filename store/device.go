@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-const BucketCount int = 128
+const BucketCount int = 16
 const BlockCount int64 = 512
 const MinBlockSize int64 = 1 * 1024 * 1024
 
@@ -19,7 +19,7 @@ type Device struct {
 	curBlock   *Block
 	bucket     []*Bucket
 	blocks     map[int64]*Block
-	blockLock  sync.Mutex
+	blockLock  sync.RWMutex
 }
 
 func NewDevice(conf *common.DeviceCfg) *Device {
@@ -37,24 +37,51 @@ func NewDevice(conf *common.DeviceCfg) *Device {
 		blocks:     LoadBlocks(conf.Dir),
 		bucket:     make([]*Bucket, 0)}
 
+	for i := 0; i < BucketCount; i++ {
+		dev.bucket = append(dev.bucket, NewBucket(i, BucketCount, dev.dir))
+	}
+
 	return dev
 }
 
-func (d *Device) Get(k Key) []byte {
-	return nil
+func (d *Device) Get(k *Key) (buf []byte, item *Item, isHot bool) {
+	b := d.getBucket(k)
+	item, isHot = d.bucket[b].Get(k)
+
+	d.blockLock.RLock()
+	defer d.blockLock.RUnlock()
+	block, ok := d.blocks[item.Block]
+	if ok {
+		buf = block.data[item.Offset : item.Offset+int64(item.HeaderLen)+int64(item.BodyLen)]
+		return
+	}
+
+	return nil, nil, false
 }
 
-func (d *Device) Put(k Key, buf []byte) (block int64, off int64) {
+func (d *Device) Put(item *Item, buf []byte) {
+	off, block := d.putBuf(buf)
+
+	b := d.getBucket(&item.Key)
+	item.Block = block
+	item.Offset = off
+	d.bucket[b].Add(item)
+}
+
+func (d *Device) putBuf(buf []byte) (off int64, block int64) {
 	size := int64(len(buf))
+	d.blockLock.Lock()
+	defer d.blockLock.Unlock()
 	if size > d.blockSize {
-		d.addBlock(size) // single block for big data
+		// single block for big data
+		d.addBlock(size)
 	} else if d.curBlock == nil || size+d.curOff > d.blockSize {
 		d.addBlock(d.blockSize)
 	}
 
 	off = d.curOff
 	block = d.curBlock.id
-	copy(buf, d.curBlock.data[d.curOff:d.curOff+size])
+	copy(d.curBlock.data[d.curOff:d.curOff+size], buf)
 	d.curOff += size
 	return
 }
@@ -100,10 +127,12 @@ func (d *Device) earlistBlock() *Block {
 }
 
 func (d *Device) addBlock(size int64) {
-	d.blockLock.Lock()
-	defer d.blockLock.Unlock()
 	d.curBlock = NewBlock(d.dir, -1, size)
 	d.curOff = 0
+}
+
+func (d *Device) getBucket(k *Key) int {
+	return int(k.H2) % len(d.bucket)
 }
 
 func getBlockInfo(cap int64) (blockSize int64, blockCount int64) {
