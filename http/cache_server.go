@@ -3,13 +3,9 @@ package http
 import (
 	"bytes"
 	"encoding/gob"
-	"errors"
 	"fmt"
 	"hornet/common"
 	"hornet/store"
-	"regexp"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -37,23 +33,57 @@ func NewCacheServer(conf *common.Config, store *store.Store, logger *common.Hour
 func (svr *CacheServer) cacheHandler(ctx *fasthttp.RequestCtx) {
 	key := append(ctx.URI().Host(), ctx.URI().Path()...)
 	k := store.GetKey(key)
+
 	buf, headerSize := svr.store.Get(&k)
 	if buf == nil {
-		// upstream
-		// resp.Header.VisitAll(func(key, value []byte) {
-		// 	fmt.Printf("%s: %s\n", key, value)
-		// })
+		resp := GoSource(ctx)
+		item, buffer := toItem(&k, ctx.URI().Host(), ctx.URI().Path(), resp)
+		svr.store.Put(item, buffer)
+	} else {
+		dec := gob.NewDecoder(bytes.NewReader(buf[:headerSize]))
+		headers := make([]Pair, 0)
+		common.Success(dec.Decode(&headers))
+		for _, p := range headers {
+			ctx.Response.Header.AddBytesKV(p.Key, p.Val)
+		}
+		ctx.Write(buf[headerSize:])
 	}
-
-	dec := gob.NewDecoder(bytes.NewReader(buf[:headerSize]))
-	var headers map[string]string
-	common.Success(dec.Decode(&headers))
-	for k, v := range headers {
-		ctx.Response.Header.Add(k, v)
-	}
-	ctx.Write(buf[headerSize:])
 
 	svr.logger.WriteLog(&common.LogData{Url: ctx.RequestURI()})
+}
+
+type Pair struct {
+	Key []byte
+	Val []byte
+}
+
+func toItem(k *store.Key, host []byte, path []byte, resp *fasthttp.Response) (item *store.Item, buf []byte) {
+	headers := make([]Pair, 0)
+	resp.Header.VisitAll(func(k []byte, v []byte) {
+		headers = append(headers, Pair{Key: k, Val: v})
+	})
+
+	tmp := bytes.Buffer{}
+	enc := gob.NewEncoder(&tmp)
+	enc.Encode(headers)
+	tmpByte := tmp.Bytes()
+	buf = append(tmpByte, resp.Body()...)
+
+	item = &store.Item{
+		Key:        *k,
+		Expires:    time.Now().Unix() + 3600,
+		HeaderLen:  int64(len(tmpByte)),
+		BodyLen:    int64(len(resp.Body())),
+		UserGroup:  0,
+		User:       0,
+		RootDomain: 0,
+		Domain:     common.Hash64(host),
+		SrcGroup:   0,
+		Path:       path,
+		Tags:       0,
+	}
+
+	return item, buf
 }
 
 func (svr *CacheServer) Start() {
@@ -63,37 +93,4 @@ func (svr *CacheServer) Start() {
 	if err := fasthttp.ListenAndServe(svr.addr, handler); err != nil {
 		fmt.Printf("Error when starting server: %s\n", err.Error())
 	}
-}
-
-func getMaxAge(header string) (int, error) {
-	parts := strings.Split(header, ",")
-	for _, part := range parts {
-		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
-		if kv[0] == "max-age" {
-			return strconv.Atoi(kv[1])
-		}
-	}
-	return 0, errors.New("max-age not found")
-}
-
-func getCacheMaxAge(resp *fasthttp.Response) int64 {
-	b := resp.Header.Peek("Cache-Control")
-	if b == nil || len(b) == 0 {
-		return -1
-	}
-
-	cacheControl := string(b)
-	re := regexp.MustCompile(`\bmax-age=(\d+)\b`)
-	matches := re.FindStringSubmatch(cacheControl)
-	if len(matches) < 2 {
-		return -1
-	}
-
-	maxAgeStr := matches[1]
-	maxAge, err := strconv.Atoi(maxAgeStr)
-	if err != nil {
-		return -1
-	}
-
-	return time.Now().UnixMilli() + int64(maxAge)
 }

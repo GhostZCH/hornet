@@ -43,12 +43,12 @@ func (b *Bucket) Count() (count int64) {
 
 func (b *Bucket) RemoveByPrefix(patten string) {
 	b.hot.Purge()
-	common.Success(b.db.Exec(`DELETE FROM item_info WHERE url LIKE '?%'`, patten))
+	common.Success(b.db.Exec(`DELETE FROM items WHERE url LIKE '?%'`, patten))
 }
 
 func (b *Bucket) RemoveBySurfix(patten string) {
 	b.hot.Purge()
-	common.Success(b.db.Exec(`DELETE FROM item_info WHERE url LIKE '%?'`, patten))
+	common.Success(b.db.Exec(`DELETE FROM items WHERE url LIKE '%?'`, patten))
 }
 
 func (b *Bucket) RemoveByBlock(block int64) {
@@ -88,7 +88,7 @@ func (b *Bucket) RemoveBySrcGroup(srcGroup uint64) {
 
 func (b *Bucket) RemoveByExpires() {
 	b.hot.Purge()
-	common.Success(b.db.Exec(`DELETE FROM items WHERE expires < ?`, time.Now().UnixMilli()))
+	common.Success(b.db.Exec(`DELETE FROM items WHERE expires < ?`, time.Now().Unix()))
 }
 
 func (b *Bucket) InitHotCache() {
@@ -97,12 +97,12 @@ func (b *Bucket) InitHotCache() {
 
 func (b *Bucket) Add(item *Item) {
 	_, err := b.db.Exec(`
-	INSERT INTO item (
+	INSERT INTO items (
 		h1, h2, block, offset, header_len, body_len, user_group, 
 		user, root_domain, domain, src_group, expires, path, tags
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		item.Key.H1, item.Key.H2, item.Block, item.Offset, item.HeaderLen,
-		item.BodyLen, item.UserGroup, item.User, item.RootDomain, item.Domain,
+		item.BodyLen, item.UserGroup, item.User, item.RootDomain, int64(item.Domain),
 		item.SrcGroup, item.Expires, item.Path, item.Tags)
 	common.Success(err)
 }
@@ -118,9 +118,15 @@ func (b *Bucket) Get(k *Key) (item *Item, isHot bool) {
 
 	var path []byte
 	item = &Item{}
-	common.Success(row.Scan(&item.Block, &item.Offset, &item.HeaderLen,
+
+	err := row.Scan(&item.Block, &item.Offset, &item.HeaderLen,
 		&item.BodyLen, &item.UserGroup, &item.User, &item.RootDomain,
-		&item.Domain, &item.SrcGroup, &item.Expires, &path, &item.Tags))
+		&item.Domain, &item.SrcGroup, &item.Expires, &path, &item.Tags)
+	if err == sql.ErrNoRows {
+		return nil, false
+	}
+	common.Success(err)
+
 	item.Path = make([]byte, len(path))
 	copy(item.Path, path)
 
@@ -132,17 +138,17 @@ func (b *Bucket) Get(k *Key) (item *Item, isHot bool) {
 func createTable(db *sql.DB) {
 	_, err := db.Exec(`
         CREATE TABLE IF NOT EXISTS items (
-            h1 UNSIGNED BIG INT NOT NULL,
-            h2 UNSIGNED BIG INT NOT NULL,
-            block UNSIGNED BIG INT NOT NULL,
-            offset UNSIGNED BIG INT NOT NULL,
-            header_len UNSIGNED BIG INT NOT NULL,
-            body_len UNSIGNED BIG INT NOT NULL,
-            user_group UNSIGNED BIG INT NOT NULL,
-            user UNSIGNED BIG INT NOT NULL,
-            root_domain UNSIGNED BIG INT NOT NULL,
-            domain UNSIGNED BIG INT NOT NULL,
-            src_group UNSIGNED BIG INT NOT NULL,
+            h1  BIG INT NOT NULL,
+            h2  BIG INT NOT NULL,
+            block  BIG INT NOT NULL,
+            offset  BIG INT NOT NULL,
+            header_len  BIG INT NOT NULL,
+            body_len  BIG INT NOT NULL,
+            user_group  BIG INT NOT NULL,
+            user  BIG INT NOT NULL,
+            root_domain  BIG INT NOT NULL,
+            domain  BIG INT NOT NULL,
+            src_group  BIG INT NOT NULL,
             expires BIG INT NOT NULL,
             path TEXT NOT NULL,
             tags BIG INT NOT NULL,

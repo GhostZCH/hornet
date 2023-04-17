@@ -6,11 +6,11 @@ type Item struct {
 	Offset     int64
 	HeaderLen  int64
 	BodyLen    int64
-	UserGroup  uint64
-	User       uint64
-	RootDomain uint64
-	Domain     uint64
-	SrcGroup   uint64
+	UserGroup  int64
+	User       int64
+	RootDomain int64
+	Domain     int64
+	SrcGroup   int64
 	Expires    int64
 	Path       []byte
 	Tags       int64

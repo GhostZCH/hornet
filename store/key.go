@@ -6,8 +6,8 @@ import (
 )
 
 type Key struct {
-	H1 uint64
-	H2 uint64
+	H1 int64
+	H2 int64
 }
 
 func GetKey(key []byte) Key {

@@ -47,13 +47,14 @@ func NewDevice(conf *common.DeviceCfg) *Device {
 func (d *Device) Get(k *Key) (buf []byte, item *Item, isHot bool) {
 	b := d.getBucket(k)
 	item, isHot = d.bucket[b].Get(k)
-
-	d.blockLock.RLock()
-	defer d.blockLock.RUnlock()
-	block, ok := d.blocks[item.Block]
-	if ok {
-		buf = block.data[item.Offset : item.Offset+int64(item.HeaderLen)+int64(item.BodyLen)]
-		return
+	if item != nil {
+		d.blockLock.RLock()
+		defer d.blockLock.RUnlock()
+		block, ok := d.blocks[item.Block]
+		if ok {
+			buf = block.data[item.Offset : item.Offset+int64(item.HeaderLen)+int64(item.BodyLen)]
+			return
+		}
 	}
 
 	return nil, nil, false

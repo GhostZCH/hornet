@@ -38,12 +38,13 @@ func GobDecodeByteSlice(data []byte) ([][]byte, error) {
 	return s, nil
 }
 
-func Hash64(data []byte) uint64 {
-	return murmur3.Sum64(data)
+func Hash64(data []byte) int64 {
+	return int64(murmur3.Sum64(data))
 }
 
-func Hash128(data []byte) (uint64, uint64) {
-	return murmur3.Sum128(data)
+func Hash128(data []byte) (int64, int64) {
+	h1, h2 := murmur3.Sum128(data)
+	return int64(h1), int64(h2)
 }
 
 func ParseArgs() string {

@@ -35,7 +35,7 @@ func (s *Store) Get(k *Key) (buf []byte, headerLen int) {
 			s.devices[i-1].Put(newItem, buf)
 		}
 		if buffer != nil {
-			return buffer, headerLen
+			return buffer, int(item.HeaderLen)
 		}
 	}
 	return nil, 0
