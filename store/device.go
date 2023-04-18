@@ -130,6 +130,7 @@ func (d *Device) earlistBlock() *Block {
 func (d *Device) addBlock(size int64) {
 	d.curBlock = NewBlock(d.dir, -1, size)
 	d.curOff = 0
+	d.blocks[d.curBlock.id] = d.curBlock
 }
 
 func (d *Device) getBucket(k *Key) int {

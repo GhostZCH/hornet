@@ -34,7 +34,7 @@ func (svr *CacheServer) cacheHandler(ctx *fasthttp.RequestCtx) {
 	key := append(ctx.URI().Host(), ctx.URI().Path()...)
 	k := store.GetKey(key)
 
-	buf, headerSize := svr.store.Get(&k)
+	buf, headerSize, level := svr.store.Get(&k)
 	if buf == nil {
 		resp := GoSource(ctx)
 		item, buffer := toItem(&k, ctx.URI().Host(), ctx.URI().Path(), resp)
@@ -49,7 +49,7 @@ func (svr *CacheServer) cacheHandler(ctx *fasthttp.RequestCtx) {
 		ctx.Write(buf[headerSize:])
 	}
 
-	svr.logger.WriteLog(&common.LogData{Url: ctx.RequestURI()})
+	svr.logger.WriteLog(&common.LogData{Url: ctx.RequestURI(), Hit: buf != nil, Level: level})
 }
 
 type Pair struct {

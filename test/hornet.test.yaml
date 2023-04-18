@@ -16,7 +16,7 @@ cache:
     - name: ssd
       dir: test/data/ssd/
       size: 512M
-    - name: hdd
-      dir: test/data/hdd/
-      size: 1G
+    # - name: hdd
+    #   dir: test/data/hdd/
+    #   size: 1G
 

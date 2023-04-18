@@ -17,7 +17,9 @@ type HourlyLogger struct {
 }
 
 type LogData struct {
-	Url []byte
+	Hit   bool
+	Url   []byte
+	Level int
 }
 
 func newLogger(dir string) *HourlyLogger {
@@ -37,7 +39,7 @@ func (l *HourlyLogger) WriteLog(msg *LogData) {
 	// ...
 	l.lock.RLock()
 	defer l.lock.RUnlock()
-	l.logger.Info().Bytes("path", msg.Url).Bytes("path1", msg.Url).Bytes("path2", msg.Url).Bytes("path3", msg.Url).Msg("")
+	l.logger.Info().Bytes("path", msg.Url).Bool("hit", msg.Hit).Int("level", msg.Level).Msg("")
 }
 
 func (l *HourlyLogger) update() {
