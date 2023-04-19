@@ -2,18 +2,16 @@ package common
 
 import (
 	"os"
-	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
 )
 
 type HourlyLogger struct {
-	dir      string
-	logger   zerolog.Logger
-	file     *os.File
-	filename string
-	lock     sync.RWMutex
+	dir    string
+	logger zerolog.Logger
+	file   *os.File
+	ch     chan *LogData
 }
 
 type LogData struct {
@@ -32,28 +30,31 @@ func newLogger(dir string) *HourlyLogger {
 
 	l := &HourlyLogger{dir: dir, file: nil}
 	l.update()
+
+	l.ch = make(chan *LogData, 2000)
+
+	go func() {
+		for msg := range l.ch {
+			l.logger.Info().Bytes("path", msg.Url).Bool("hit", msg.Hit).Int("level", msg.Level).Msg("")
+		}
+	}()
+
 	return l
 }
 
 func (l *HourlyLogger) WriteLog(msg *LogData) {
-	// ...
-	l.lock.RLock()
-	defer l.lock.RUnlock()
-	l.logger.Info().Bytes("path", msg.Url).Bool("hit", msg.Hit).Int("level", msg.Level).Msg("")
+	l.ch <- msg
 }
 
 func (l *HourlyLogger) update() {
-	l.lock.Lock()
-	defer l.lock.Unlock()
-
 	if l.file != nil {
 		l.file.Close()
 	}
 
-	l.filename = l.dir + time.Now().Format("2006-01-02-15.log")
+	filename := l.dir + time.Now().Format("2006-01-02-15.log")
 
 	var err error
-	l.file, err = os.OpenFile(l.filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	l.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		panic(err)
 	}

@@ -2,6 +2,7 @@ package store
 
 import (
 	"hornet/common"
+	"sort"
 	"sync"
 )
 
@@ -18,8 +19,8 @@ type Device struct {
 	curOff     int64
 	curBlock   *Block
 	bucket     []*Bucket
-	blocks     map[int64]*Block
-	blockLock  sync.RWMutex
+	blocks     *sync.Map
+	addLock    sync.Mutex
 }
 
 func NewDevice(conf *common.DeviceCfg) *Device {
@@ -48,11 +49,11 @@ func (d *Device) Get(k *Key) (buf []byte, item *Item, isHot bool) {
 	b := d.getBucket(k)
 	item, isHot = d.bucket[b].Get(k)
 	if item != nil {
-		d.blockLock.RLock()
-		defer d.blockLock.RUnlock()
-		block, ok := d.blocks[item.Block]
+		block, ok := d.blocks.Load(item.Block)
 		if ok {
-			buf = block.data[item.Offset : item.Offset+int64(item.HeaderLen)+int64(item.BodyLen)]
+			data := block.(*Block).data
+			end := item.Offset + int64(item.HeaderLen) + int64(item.BodyLen)
+			buf = data[item.Offset:end]
 			return
 		}
 	}
@@ -70,9 +71,11 @@ func (d *Device) Put(item *Item, buf []byte) {
 }
 
 func (d *Device) putBuf(buf []byte) (off int64, block int64) {
+	// 添加过程需要加锁
+	d.addLock.Lock()
+	defer d.addLock.Unlock()
+
 	size := int64(len(buf))
-	d.blockLock.Lock()
-	defer d.blockLock.Unlock()
 	if size > d.blockSize {
 		// single block for big data
 		d.addBlock(size)
@@ -89,48 +92,46 @@ func (d *Device) putBuf(buf []byte) (off int64, block int64) {
 
 func (d *Device) Size() int64 {
 	size := int64(0)
-	for _, b := range d.blocks {
-		size += int64(len(b.data))
-	}
+	d.blocks.Range(func(key, value any) bool {
+		size += int64(len(value.(*Block).data))
+		return true
+	})
 	return size
 }
 
-func (d *Device) Clear() (blocks []int64) {
-	d.blockLock.Lock()
-	defer d.blockLock.Unlock()
+func (d *Device) clear(appendSize int64) {
+	ids := make([]int64, 0)
+	d.blocks.Range(func(key, value any) bool {
+		ids = append(ids, key.(int64))
+		return true
+	})
 
-	for len(d.blocks) >= 0 && d.Size() > d.cap {
-		b := d.earlistBlock()
-		delete(d.blocks, b.id)
-		blocks = append(blocks, b.id)
+	sort.Slice(ids, func(i, j int) bool {
+		return ids[i] < ids[j]
+	})
+
+	size := d.Size() + appendSize
+	for i := 0; size > d.cap && i < len(ids)-1; i++ {
+		id := ids[i]
+		b, _ := d.blocks.Load(id)
+		size -= int64(len(b.(*Block).data))
+		b.(*Block).Remove()
+		// TODO LOG id
 	}
-
-	return blocks
 }
 
 func (d *Device) Close() {
-	d.blockLock.Lock()
-	defer d.blockLock.Unlock()
-
-	for _, b := range d.blocks {
-		b.Close()
-	}
-}
-
-func (d *Device) earlistBlock() *Block {
-	min := int64(0)
-	for i := range d.blocks {
-		if i < min || min == 0 {
-			min = i
-		}
-	}
-	return d.blocks[min]
+	d.blocks.Range(func(key, value any) bool {
+		value.(*Block).Close()
+		return true
+	})
 }
 
 func (d *Device) addBlock(size int64) {
+	d.clear(size)
 	d.curBlock = NewBlock(d.dir, -1, size)
 	d.curOff = 0
-	d.blocks[d.curBlock.id] = d.curBlock
+	d.blocks.Store(d.curBlock.id, d.curBlock)
 }
 
 func (d *Device) getBucket(k *Key) int {

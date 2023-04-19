@@ -104,6 +104,7 @@ func (b *Bucket) Add(item *Item) {
 		item.Key.H1, item.Key.H2, item.Block, item.Offset, item.HeaderLen,
 		item.BodyLen, item.UserGroup, item.User, item.RootDomain, int64(item.Domain),
 		item.SrcGroup, item.Expires, item.Path, item.Tags)
+	b.hot.Add(&item.Key, item)
 	common.Success(err)
 }
 

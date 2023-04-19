@@ -27,6 +27,10 @@ func (hi *HotItems) Get(k *Key) (item *Item, ok bool) {
 	hi.lock.RLock()
 	defer hi.lock.RUnlock()
 	item, ok = hi.cache.Get(k.H1)
+	if item != nil && item.Key.H2 != k.H2 {
+		//应对少量的碰撞
+		return nil, false
+	}
 	return
 }
 

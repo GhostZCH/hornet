@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -42,13 +43,13 @@ func getPath(dir string, block int64) string {
 	return fmt.Sprintf("%s/%016x.dat", dir, block)
 }
 
-func LoadBlocks(dir string) map[int64]*Block {
+func LoadBlocks(dir string) *sync.Map {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		panic(err)
 	}
 
-	blocks := make(map[int64]*Block)
+	blocks := &sync.Map{}
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".dat") {
 			var id int64
@@ -60,7 +61,7 @@ func LoadBlocks(dir string) map[int64]*Block {
 			if err != nil {
 				panic(err)
 			}
-			blocks[id] = NewBlock(dir, id, fileInfo.Size())
+			blocks.Store(id, NewBlock(dir, id, fileInfo.Size()))
 		}
 	}
 
