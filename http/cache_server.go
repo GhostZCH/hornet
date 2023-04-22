@@ -15,9 +15,9 @@ type CacheServer struct {
 	name      string
 	addr      string
 	adminAddr string
-	// upstream string
-	store  *store.Store
-	logger *common.HourlyLogger
+	store     *store.Store
+	logger    *common.HourlyLogger
+	upstream  *ProxyPool
 }
 
 func NewCacheServer(conf *common.Config, store *store.Store, logger *common.HourlyLogger) *CacheServer {
@@ -27,6 +27,7 @@ func NewCacheServer(conf *common.Config, store *store.Store, logger *common.Hour
 		adminAddr: conf.Cache.Admin,
 		store:     store,
 		logger:    logger,
+		upstream:  NewProxyPool(),
 	}
 }
 
@@ -36,8 +37,9 @@ func (svr *CacheServer) cacheHandler(ctx *fasthttp.RequestCtx) {
 
 	buf, headerSize, level := svr.store.Get(&k)
 	if buf == nil {
-		resp := GoSource(ctx)
-		item, buffer := toItem(&k, ctx.URI().Host(), ctx.URI().Path(), resp)
+		// TODO 从req中读取特定参数覆盖原有参数
+		resp := svr.upstream.Get(string(ctx.Host()), ctx)
+		item, buffer := toItem(&k, ctx.Host(), ctx.URI().Path(), resp)
 		svr.store.Put(item, buffer)
 	} else {
 		dec := gob.NewDecoder(bytes.NewReader(buf[:headerSize]))
