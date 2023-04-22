@@ -81,3 +81,8 @@ func ParseSize(size string) int64 {
 
 	return base
 }
+
+func IsIPPort(str string) bool {
+	ipPortPattern := regexp.MustCompile(`^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$`)
+	return ipPortPattern.MatchString(str)
+}

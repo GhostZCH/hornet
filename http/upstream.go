@@ -9,31 +9,43 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+type Doer interface {
+	Do(req *fasthttp.Request, resp *fasthttp.Response) error
+}
+
 type ProxyPool struct {
-	pools *lru.ARCCache[string, *fasthttp.HostClient]
+	pools *lru.ARCCache[string, Doer]
 }
 
 func NewProxyPool() *ProxyPool {
-	p, e := lru.NewARC[string, *fasthttp.HostClient](10)
+	p, e := lru.NewARC[string, Doer](10)
 	common.Success(e)
 	return &ProxyPool{pools: p}
 }
 
-func (pool *ProxyPool) getPool(addr string) *fasthttp.HostClient {
+func (pool *ProxyPool) getPool(addr string) Doer {
 	p, ok := pool.pools.Get(addr)
 
 	if !ok {
-		dialFunc := func(addr string) (net.Conn, error) {
-			return fasthttp.DialTimeout(addr, 10*time.Second)
-		}
+		var p Doer
+		if common.IsIPPort(addr) {
+			dialFunc := func(addr string) (net.Conn, error) {
+				return fasthttp.DialTimeout(addr, 10*time.Second)
+			}
 
-		p = &fasthttp.HostClient{
-			Addr:                addr,
-			Dial:                dialFunc,
-			MaxConns:            512,
-			MaxIdleConnDuration: 2 * time.Second,
-		}
+			p = &fasthttp.HostClient{
+				Addr:                addr,
+				Dial:                dialFunc,
+				MaxConns:            512,
+				MaxIdleConnDuration: 2 * time.Second,
+			}
+		} else {
 
+			p = &fasthttp.Client{
+				MaxConnsPerHost:     512,
+				MaxIdleConnDuration: 2 * time.Second,
+			}
+		}
 		pool.pools.Add(addr, p)
 	}
 
