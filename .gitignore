@@ -4,3 +4,6 @@ debug
 local_*
 *.pyc
 .idea
+*.log
+*.dat
+*.db

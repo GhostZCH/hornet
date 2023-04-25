@@ -11,11 +11,12 @@ cache:
   admin: 127.0.0.1:9200
   device:
     - name: mem
-      dir: /dev/shm/hornet/
-      size: 512M
+      dir: /dev/shm/
+      size: 64M
     - name: ssd
-      dir: /home/ssd/hornet/
-    - name: hdd
-      dir: /home/hdd/hornet/
-      size: 1T
+      dir: test/data/ssd/
+      size: 512M
+    # - name: hdd
+    #   dir: test/data/hdd/
+    #   size: 1G
 
