@@ -1,5 +1,8 @@
-common:
-  name: Hornet
+basic:
+  name: hornet-local-test-001
+  queen: 127.0.0.1:9300
+  proxy: true
+  cache: true
 
 log:
   path: test/log/run  # check dir exist
@@ -8,15 +11,16 @@ log:
 
 cache:
   addr: 127.0.0.1:9100
-  admin: 127.0.0.1:9200
   device:
     - name: mem
-      dir: /dev/shm/
+      dir:  test/data/shm
       size: 64M
     - name: ssd
       dir: test/data/ssd/
       size: 512M
-    # - name: hdd
-    #   dir: test/data/hdd/
-    #   size: 1G
+    - name: hdd
+      dir: test/data/hdd/
+      size: 1G
 
+proxy:
+  addr: 127.0.0.1:9200

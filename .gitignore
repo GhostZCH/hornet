@@ -7,3 +7,4 @@ local_*
 *.log
 *.dat
 *.db
+go_build_hornet

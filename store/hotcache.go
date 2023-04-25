@@ -18,7 +18,7 @@ func (hi *HotItems) Init(itemSize int) {
 	if itemSize/6 < 1000 {
 		itemSize = 1000
 	}
-	c, err := lru.NewARC[Key, *Item](int(itemSize))
+	c, err := lru.NewARC[Key, *Item](itemSize)
 	common.Success(err)
 	hi.cache = c
 }

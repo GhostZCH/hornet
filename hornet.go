@@ -9,11 +9,11 @@ import (
 func main() {
 
 	confPath := common.ParseArgs()
-	conf := common.LoadConf(confPath)
-	store := store.NewStore(&conf.Cache)
+	c := common.LoadConf(confPath)
+	s := store.NewStore(&c.Cache)
 
-	logger := common.NewHourlyLogger("test/log/")
+	access := common.NewHourlyLogger("test/log/")
 
-	cacheSvr := http.NewCacheServer(&conf, store, logger)
+	cacheSvr := http.NewCacheServer(&c, s, access)
 	cacheSvr.Start()
 }

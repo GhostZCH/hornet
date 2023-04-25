@@ -70,7 +70,7 @@ func (pool *ProxyPool) Get(proxyAddr string, ctx *fasthttp.RequestCtx) *fasthttp
 
 	// 将响应写回客户端
 	resp.Header.CopyTo(&ctx.Response.Header)
-	ctx.Write(resp.Body())
+	common.Success(ctx.Write(resp.Body()))
 
 	return &ctx.Response
 }

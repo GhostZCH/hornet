@@ -3,6 +3,7 @@ package preftests
 import (
 	"database/sql"
 	"fmt"
+	"hornet/common"
 	"log"
 	"testing"
 	"time"
@@ -20,14 +21,17 @@ type ItemInfo struct {
 }
 
 func TestSQLite(t *testing.T) {
-	path := "/tmp/xxx.db"
+	path := "x1.db"
 
 	// 打开数据库
 	db, err := sql.Open("sqlite3", "file:"+path+"?cache=shared&mode=rwc")
 	if err != nil {
 		panic(err)
 	}
-	defer db.Close()
+	defer func(db *sql.DB) {
+		err := db.Close()
+		common.Success(err)
+	}(db)
 
 	// 创建表
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS item_info (
@@ -61,7 +65,9 @@ func TestSQLite(t *testing.T) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer stmt.Close()
+	defer func(stmt *sql.Stmt) {
+		common.Success(stmt.Close())
+	}(stmt)
 
 	for i := 0; i < n; i++ {
 		block := int64(i % 32)
@@ -98,7 +104,8 @@ func TestSQLite(t *testing.T) {
 	fmt.Printf("Query by id %d times takes %s\n", n, time.Since(start))
 
 	start = time.Now()
-	db.Exec(`DELETE FROM item_info WHERE url LIKE  '3_%'`)
+	_, err = db.Exec(`DELETE FROM item_info WHERE url LIKE  '3_%'`)
+	common.Success(err)
 	fmt.Printf("1 delte 10%% of %d items takes %s\n", n, time.Since(start))
 
 	// start = time.Now()
@@ -110,110 +117,13 @@ func TestSQLite(t *testing.T) {
 	// fmt.Printf("3 delte 10%% of %d items takes %s\n", n, time.Since(start))
 
 	start = time.Now()
-	db.Exec(`DELETE FROM item_info WHERE block == 17 or block == 18 or block == 21 or block == 31`)
+	_, err = db.Exec(`DELETE FROM item_info WHERE block == 17 or block == 18 or block == 21 or block == 31`)
+	common.Success(err)
 	fmt.Printf("4 delte one block of %d items takes %s\n", n, time.Since(start))
 
 	count := 0
-	db.QueryRow("SELECT COUNT(*) FROM item_info ").Scan(&count)
-	fmt.Printf("count %d \n", count)
-
-}
-
-func TestBloom(t *testing.T) {
-	path := "/tmp/yyy.db"
-
-	// 打开数据库
-	db, err := sql.Open("sqlite3", "file:"+path+"?cache=shared&mode=rwc")
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-
-	// 创建表
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS item_info (
-		id1 BIGINT,
-		id2 BIGINT,
-		host TEXT(128),
-		block BIGINT,
-		offset BIGINT,
-		size BIGINT,
-		url TEXT(256),
-		PRIMARY KEY (id1, id2)
-	);`)
-
-	n := 1000000
-
-	if err != nil {
-		panic(err)
-	}
-
-	startTime := time.Now()
-
-	// 开始事务
-	tx, err := db.Begin()
-	if err != nil {
-		panic(err)
-	}
-
-	// 执行插入操作
-	stmt, err := tx.Prepare("INSERT INTO item_info(id1, host, block, offset, size, url) VALUES (?, ?, ?, ?, ?, ?)")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer stmt.Close()
-
-	for i := 0; i < n; i++ {
-		block := int64(i % 32)
-		offset := int64(i * 10)
-		size := int64(1024)
-		host := fmt.Sprintf("%016d.aaaaaaaa.com.cn.ok", i%10)
-		url := fmt.Sprintf("%d_https//www.example.com/products/item1www.example.com/products/item1www.example.com/products/item1?id=%020d", i%100, i)
-
-		_, err := stmt.Exec(int64(i), host, block, offset, size, url)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// 提交事务
-	err = tx.Commit()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// 输出耗时
-	duration := time.Since(startTime)
-	fmt.Printf("Insert %d rows took %s\n", n, duration)
-
-	// 根据id查询
-	start := time.Now()
-	info := ItemInfo{}
-	for i := 0; i < n; i++ {
-		err := db.QueryRow("SELECT id1,block,offset,size FROM item_info WHERE id1 = ? Limit 1", i).Scan(&info.ID1, &info.block, &info.Offset, &info.Size)
-		if err != nil {
-			panic(err)
-		}
-	}
-	fmt.Printf("Query by id %d times takes %s\n", n, time.Since(start))
-
-	start = time.Now()
-	db.Exec(`DELETE FROM item_info WHERE url LIKE  '3_%'`)
-	fmt.Printf("1 delte 10%% of %d items takes %s\n", n, time.Since(start))
-
-	// start = time.Now()
-	// db.Exec(`DELETE FROM item_info WHERE url LIKE'3_%'`)
-	// fmt.Printf("2 delte 10%% of %d items takes %s\n", n, time.Since(start))
-
-	// start = time.Now()
-	// db.Exec(`DELETE FROM item_info WHERE host == '0000000000000003.aaaaaaaa.com.cn.ok'`)
-	// fmt.Printf("3 delte 10%% of %d items takes %s\n", n, time.Since(start))
-
-	start = time.Now()
-	db.Exec(`DELETE FROM item_info WHERE block == 17 or block == 18 or block == 21 or block == 31`)
-	fmt.Printf("4 delte one block of %d items takes %s\n", n, time.Since(start))
-
-	count := 0
-	db.QueryRow("SELECT COUNT(*) FROM item_info ").Scan(&count)
+	err = db.QueryRow("SELECT COUNT(*) FROM item_info ").Scan(&count)
+	common.Success(err)
 	fmt.Printf("count %d \n", count)
 
 }

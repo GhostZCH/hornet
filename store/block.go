@@ -3,7 +3,6 @@ package store
 import (
 	"fmt"
 	"hornet/common"
-	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
@@ -36,7 +35,7 @@ func (b *Block) Remove() {
 }
 
 func (b *Block) Close() {
-	syscall.Munmap(b.data)
+	common.Success(syscall.Munmap(b.data))
 }
 
 func getPath(dir string, block int64) string {
@@ -44,10 +43,8 @@ func getPath(dir string, block int64) string {
 }
 
 func LoadBlocks(dir string) *sync.Map {
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		panic(err)
-	}
+	files, err := os.ReadDir(dir)
+	common.Success(err)
 
 	blocks := &sync.Map{}
 	for _, file := range files {
@@ -74,7 +71,9 @@ func mmap(path string, size int) (data []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		common.Success(f.Close())
+	}(f)
 
 	err = f.Truncate(int64(size))
 	if err != nil {

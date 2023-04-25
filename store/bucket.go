@@ -37,18 +37,18 @@ func (b *Bucket) RemoveByKey(k *Key) {
 }
 
 func (b *Bucket) Count() (count int64) {
-	b.db.QueryRow("SELECT COUNT(*) FROM items ").Scan(&count)
+	common.Success(b.db.QueryRow("SELECT COUNT(*) FROM items ").Scan(&count))
 	return
 }
 
 func (b *Bucket) RemoveByPrefix(patten string) {
 	b.hot.Purge()
-	common.Success(b.db.Exec(`DELETE FROM items WHERE url LIKE '?%'`, patten))
+	common.Success(b.db.Exec(`DELETE FROM items WHERE path LIKE '?%'`, patten))
 }
 
 func (b *Bucket) RemoveBySurfix(patten string) {
 	b.hot.Purge()
-	common.Success(b.db.Exec(`DELETE FROM items WHERE url LIKE '%?'`, patten))
+	common.Success(b.db.Exec(`DELETE FROM items WHERE path LIKE '%?'`, patten))
 }
 
 func (b *Bucket) RemoveByBlock(block int64) {

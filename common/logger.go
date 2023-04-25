@@ -25,7 +25,7 @@ func newLogger(dir string) *HourlyLogger {
 
 	// 如果日志文件夹不存在，则创建文件夹
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		os.MkdirAll(dir, os.ModePerm)
+		Success(os.MkdirAll(dir, os.ModePerm))
 	}
 
 	l := &HourlyLogger{dir: dir, file: nil}
@@ -48,16 +48,14 @@ func (l *HourlyLogger) WriteLog(msg *LogData) {
 
 func (l *HourlyLogger) update() {
 	if l.file != nil {
-		l.file.Close()
+		Success(l.file.Close())
 	}
 
 	filename := l.dir + time.Now().Format("2006-01-02-15.log")
 
 	var err error
 	l.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
-	if err != nil {
-		panic(err)
-	}
+	Success(err)
 
 	l.logger = zerolog.New(l.file).With().Logger()
 }

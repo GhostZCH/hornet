@@ -24,8 +24,8 @@ type Device struct {
 }
 
 func NewDevice(conf *common.DeviceCfg) *Device {
-	cap := common.ParseSize(conf.Size)
-	blockSize, blockCount := getBlockInfo(cap)
+	size := common.ParseSize(conf.Size)
+	blockSize, blockCount := getBlockInfo(size)
 
 	dev := &Device{
 		dir:        conf.Dir,
@@ -52,7 +52,7 @@ func (d *Device) Get(k *Key) (buf []byte, item *Item, isHot bool) {
 		block, ok := d.blocks.Load(item.Block)
 		if ok {
 			data := block.(*Block).data
-			end := item.Offset + int64(item.HeaderLen) + int64(item.BodyLen)
+			end := item.Offset + item.HeaderLen + item.BodyLen
 			buf = data[item.Offset:end]
 			return
 		}

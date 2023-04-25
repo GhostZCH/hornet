@@ -7,13 +7,20 @@ import (
 )
 
 type Config struct {
-	Common CommonConfig `yaml:"common"`
-	Log    LogConfig    `yaml:"log"`
-	Cache  CacheConfig  `yaml:"cache"`
+	Common BasicConfig `yaml:"common"`
+	Log    LogConfig   `yaml:"log"`
+	Cache  CacheConfig `yaml:"cache"`
 }
 
-type CommonConfig struct {
-	Name string `yaml:"name"`
+type BasicConfig struct {
+	Name  string `yaml:"name"`
+	Queen string `yaml:"queen"`
+	Proxy bool   `yaml:"proxy"`
+	Cache bool   `yaml:"cache"`
+}
+
+type ProxyConfig struct {
+	Addr string `yaml:"addr"`
 }
 
 type LogConfig struct {
@@ -23,9 +30,9 @@ type LogConfig struct {
 }
 
 type CacheConfig struct {
-	Addr   string      `yaml:"addr"`
-	Admin  string      `yaml:"admin"`
-	Device []DeviceCfg `yaml:"device"`
+	Addr      string      `yaml:"addr"`
+	AdminAddr string      `yaml:"admin"`
+	Device    []DeviceCfg `yaml:"device"`
 }
 
 type DeviceCfg struct {
@@ -37,9 +44,7 @@ type DeviceCfg struct {
 // parseConfig parses the YAML config file and performs validation on the fields.
 func parseConfig(filename string) (*Config, error) {
 	data, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
+	Success(err)
 
 	config := &Config{}
 	if err := yaml.Unmarshal(data, config); err != nil {
