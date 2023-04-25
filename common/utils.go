@@ -1,8 +1,6 @@
 package common
 
 import (
-	"bytes"
-	"encoding/gob"
 	"flag"
 	"fmt"
 	"regexp"
@@ -16,26 +14,6 @@ func Success(args ...interface{}) {
 	if args[len(args)-1] != nil {
 		panic(args[len(args)-1])
 	}
-}
-
-func GobEncodeByteSlice(s [][]byte) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(s); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-// GobDecodeByteSlice 将 []byte 反序列化成 [][]byte
-func GobDecodeByteSlice(data []byte) ([][]byte, error) {
-	var s [][]byte
-	buf := bytes.NewBuffer(data)
-	dec := gob.NewDecoder(buf)
-	if err := dec.Decode(&s); err != nil {
-		return nil, err
-	}
-	return s, nil
 }
 
 func Hash64(data []byte) int64 {
@@ -54,7 +32,7 @@ func ParseArgs() string {
 	return *path
 }
 
-// parseSize parses the size string into bytes. The size string must match the regex pattern "^[0-9]+[KMGT]?B?$".
+// ParseSize parses the size string into bytes. The size string must match the regex pattern "^[0-9]+[KMGT]?B?$".
 func ParseSize(size string) int64 {
 	re := regexp.MustCompile(`^([0-9]+)([KMGTkmgt]?)(B?)$`)
 	match := re.FindStringSubmatch(strings.ToUpper(size))

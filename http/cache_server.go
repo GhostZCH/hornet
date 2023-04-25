@@ -24,7 +24,7 @@ func NewCacheServer(conf *common.Config, store *store.Store, logger *common.Hour
 	return &CacheServer{
 		name:      conf.Common.Name,
 		addr:      conf.Cache.Addr,
-		adminAddr: conf.Cache.Admin,
+		adminAddr: conf.Cache.AdminAddr,
 		store:     store,
 		logger:    logger,
 		upstream:  NewProxyPool(),
@@ -48,7 +48,7 @@ func (svr *CacheServer) cacheHandler(ctx *fasthttp.RequestCtx) {
 		for _, p := range headers {
 			ctx.Response.Header.AddBytesKV(p.Key, p.Val)
 		}
-		ctx.Write(buf[headerSize:])
+		common.Success(ctx.Write(buf[headerSize:]))
 	}
 
 	svr.logger.WriteLog(&common.LogData{Url: ctx.RequestURI(), Hit: buf != nil, Level: level})
@@ -67,7 +67,7 @@ func toItem(k *store.Key, host []byte, path []byte, resp *fasthttp.Response) (it
 
 	tmp := bytes.Buffer{}
 	enc := gob.NewEncoder(&tmp)
-	enc.Encode(headers)
+	common.Success(enc.Encode(headers))
 	tmpByte := tmp.Bytes()
 	buf = append(tmpByte, resp.Body()...)
 
