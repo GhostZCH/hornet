@@ -2,11 +2,12 @@ package store
 
 import (
 	"hornet/common"
+	"runtime"
 	"sort"
 	"sync"
 )
 
-const BucketCount int = 16
+const BucketCount int = 256
 const BlockCount int64 = 512
 const MinBlockSize int64 = 1 * 1024 * 1024
 
@@ -21,6 +22,7 @@ type Device struct {
 	bucket     []*Bucket
 	blocks     *sync.Map
 	addLock    sync.Mutex
+	removeLock sync.Mutex
 }
 
 func NewDevice(conf *common.DeviceCfg) *Device {
@@ -33,13 +35,13 @@ func NewDevice(conf *common.DeviceCfg) *Device {
 		cap:        common.ParseSize(conf.Size),
 		blockCount: blockCount,
 		blockSize:  blockSize,
-		curOff:     -1, // start a new block affter roboot
+		curOff:     -1, // start a new block after reboot
 		curBlock:   nil,
 		blocks:     LoadBlocks(conf.Dir),
 		bucket:     make([]*Bucket, 0)}
 
 	for i := 0; i < BucketCount; i++ {
-		dev.bucket = append(dev.bucket, NewBucket(i, BucketCount, dev.dir))
+		dev.bucket = append(dev.bucket, NewBucket(i, dev.dir))
 	}
 
 	return dev
@@ -59,6 +61,45 @@ func (d *Device) Get(k *Key) (buf []byte, item *Item, isHot bool) {
 	}
 
 	return nil, nil, false
+}
+
+func (d *Device) Remove(args []*RemoveArg) {
+	// key删除较快，直接删除
+	isKey := false
+	for _, arg := range args {
+		if arg.Cmd == "key" {
+			isKey = true
+			break
+		}
+	}
+	if isKey {
+		if len(args) != 1 {
+			panic("按照key删除不支持包含其他的参数")
+		}
+		k := NewKey([]byte(args[0].Val))
+		idx := d.getBucket(k)
+		d.bucket[idx].RemoveByKey(k)
+		return
+	}
+
+	d.removeLock.Lock()
+	defer d.removeLock.Unlock()
+
+	var wg sync.WaitGroup
+	wg.Add(BucketCount)
+
+	// 限制最大并行不超过cpu数量的一半防止删除造成正常业务抖动
+	sem := make(chan struct{}, runtime.NumCPU()/2)
+
+	for i := 0; i < BucketCount; i++ {
+		sem <- struct{}{}
+		go func(b *Bucket) {
+			b.Remove(args)
+			<-sem
+		}(d.bucket[i])
+	}
+
+	wg.Wait()
 }
 
 func (d *Device) Put(item *Item, buf []byte) {
@@ -135,7 +176,7 @@ func (d *Device) addBlock(size int64) {
 }
 
 func (d *Device) getBucket(k *Key) int {
-	return int(k.H2) % len(d.bucket)
+	return int(k.Hash64() % int64(BucketCount))
 }
 
 func getBlockInfo(cap int64) (blockSize int64, blockCount int64) {

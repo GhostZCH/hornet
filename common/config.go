@@ -14,13 +14,9 @@ type Config struct {
 
 type BasicConfig struct {
 	Name  string `yaml:"name"`
-	Queen string `yaml:"queen"`
+	Queen bool   `yaml:"queen"`
 	Proxy bool   `yaml:"proxy"`
 	Cache bool   `yaml:"cache"`
-}
-
-type ProxyConfig struct {
-	Addr string `yaml:"addr"`
 }
 
 type LogConfig struct {
@@ -29,10 +25,21 @@ type LogConfig struct {
 	Access string `yaml:"access"`
 }
 
+type QueueConfig struct {
+	Addr string `yaml:"addr"`
+}
+
+type ProxyConfig struct {
+	Addr  string `yaml:"addr"`
+	Admin string `yaml:"admin"`
+	Queen string `yaml:"queen"`
+}
+
 type CacheConfig struct {
-	Addr      string      `yaml:"addr"`
-	AdminAddr string      `yaml:"admin"`
-	Device    []DeviceCfg `yaml:"device"`
+	Addr   string      `yaml:"addr"`
+	Admin  string      `yaml:"admin"`
+	Queen  string      `yaml:"queen"`
+	Device []DeviceCfg `yaml:"device"`
 }
 
 type DeviceCfg struct {

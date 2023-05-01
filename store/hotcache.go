@@ -41,13 +41,13 @@ func (hi *HotItems) Add(k *Key, item *Item) {
 }
 
 func (hi *HotItems) Remove(k *Key) {
-	hi.lock.RLock()
-	defer hi.lock.RUnlock()
+	hi.lock.Lock()
+	defer hi.lock.Unlock()
 	hi.cache.Remove(*k)
 }
 
 func (hi *HotItems) Purge() {
-	hi.lock.RLock()
-	defer hi.lock.RUnlock()
+	hi.lock.Lock()
+	defer hi.lock.Unlock()
 	hi.cache.Purge()
 }

@@ -1,8 +1,8 @@
 basic:
   name: hornet-local-test-001
-  queen: 127.0.0.1:9300
   proxy: true
   cache: true
+  queen: true
 
 log:
   path: test/log/run  # check dir exist
@@ -10,7 +10,9 @@ log:
   access: test/log/access
 
 cache:
+  queen: 127.0.0.1:9500
   addr: 127.0.0.1:9100
+  admin: 127.0.0.1:9200
   device:
     - name: mem
       dir:  test/data/shm
@@ -23,4 +25,9 @@ cache:
       size: 1G
 
 proxy:
-  addr: 127.0.0.1:9200
+  queen: 127.0.0.1:9500
+  addr: 127.0.0.1:9300
+  admin: 127.0.0.1:9400
+
+queen:
+  addr: 127.0.0.1:9500

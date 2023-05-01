@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"hornet/common"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -15,8 +16,39 @@ type Bucket struct {
 	hot   *HotItems
 }
 
-func NewBucket(index int, bucketCount int, dir string) *Bucket {
-	path := fmt.Sprintf("%s/meta_%05d_%05d.db", dir, bucketCount, index)
+type RemoveArg struct {
+	Cmd string // key, middle, suffix, prefix, user, userGroup, rootDomain, domain, srcGroup, tag
+	Val string
+}
+
+var sqlMap = map[string]string{
+	"middle":     "path LIKE '%%%v%%'",
+	"prefix":     "path LIKE '%v%%'",
+	"suffix":     "path LIKE '%%%v'",
+	"user":       "user = %v",
+	"userGroup":  "user_group = %v",
+	"rootDomain": "root_domain = %v",
+	"domain":     "domain = %v",
+	"srcGroup":   "src_group = %v",
+	"tag":        "tag = %v",
+}
+
+func (arg *RemoveArg) toCondition() string {
+	f, ok := sqlMap[arg.Cmd]
+	if !ok {
+		panic(fmt.Sprintf("delete arg %v not exist", arg.Cmd))
+	}
+
+	if arg.Cmd == "user" || arg.Cmd == "userGroup" || arg.Cmd == "rootDomain" ||
+		arg.Cmd == "domain" || arg.Cmd == "srcGroup" {
+		return fmt.Sprintf(f, common.Hash64([]byte(arg.Val)))
+	}
+
+	return fmt.Sprintf(f, arg.Val)
+}
+
+func NewBucket(index int, dir string) *Bucket {
+	path := fmt.Sprintf("%s/meta_%05d.db", dir, index)
 	db, err := sql.Open("sqlite3", "file:"+path+"?cache=shared&mode=rwc")
 	common.Success(err)
 	createTable(db)
@@ -31,14 +63,32 @@ func NewBucket(index int, bucketCount int, dir string) *Bucket {
 	return b
 }
 
+func (b *Bucket) Count() (count int64) {
+	common.Success(b.db.QueryRow("SELECT COUNT(*) FROM items ").Scan(&count))
+	return
+}
+
+func (b *Bucket) Remove(args []*RemoveArg) {
+	query := "DELETE from items WHERE "
+
+	where := make([]string, 0)
+	for _, arg := range args {
+		where = append(where, arg.toCondition())
+	}
+
+	query += strings.Join(where, " AND ")
+
+	common.Success(b.db.Exec(query))
+}
+
 func (b *Bucket) RemoveByKey(k *Key) {
 	b.hot.Remove(k)
 	common.Success(b.db.Exec("DELETE FROM items WHERE H1=? AND H2=?", k.H1, k.H2))
 }
 
-func (b *Bucket) Count() (count int64) {
-	common.Success(b.db.QueryRow("SELECT COUNT(*) FROM items ").Scan(&count))
-	return
+func (b *Bucket) RemoveByMiddle(patten string) {
+	b.hot.Purge()
+	common.Success(b.db.Exec(`DELETE FROM items WHERE path LIKE '%?%'`, patten))
 }
 
 func (b *Bucket) RemoveByPrefix(patten string) {
@@ -46,7 +96,7 @@ func (b *Bucket) RemoveByPrefix(patten string) {
 	common.Success(b.db.Exec(`DELETE FROM items WHERE path LIKE '?%'`, patten))
 }
 
-func (b *Bucket) RemoveBySurfix(patten string) {
+func (b *Bucket) RemoveBySuffix(patten string) {
 	b.hot.Purge()
 	common.Success(b.db.Exec(`DELETE FROM items WHERE path LIKE '%?'`, patten))
 }

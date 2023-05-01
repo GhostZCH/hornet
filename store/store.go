@@ -45,3 +45,9 @@ func (s *Store) Put(item *Item, buf []byte) {
 	dev := s.devices[len(s.devices)-1]
 	dev.Put(item, buf)
 }
+
+func (s *Store) Del(args []*RemoveArg) {
+	for i := len(s.devices) - 1; i >= 0; i-- {
+		s.devices[i].Remove(args)
+	}
+}
